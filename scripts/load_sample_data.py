@@ -83,68 +83,69 @@ def load_sample_data():
 
 def sync_to_neo4j(db):
     try:
-        session = neo4j_conn.get_session()
-        dao = GraphDAO(session)
+        driver = neo4j_conn.get_driver()
+        dao = GraphDAO(driver)
         
-        session.run("MATCH (n) DETACH DELETE n")
-        logger.info("✓ 清空 Neo4j 现有数据")
-        
-        orgs = db.query(OrganizationInfo).all()
-        org_node_map = {}
-        for org in orgs:
-            node_id = dao.create_organization_node({
-                "id": org.org_id,
-                "name": org.name,
-                "country": org.country,
-                "abbreviation": org.abbreviation,
-                "rank_score": float(org.rank_score) if org.rank_score else 0
-            })
-            org_node_map[org.org_id] = node_id
-        logger.info(f"✓ 同步了 {len(orgs)} 个组织节点")
-        
-        authors = db.query(AuthorInfo).all()
-        author_node_map = {}
-        for author in authors:
-            node_id = dao.create_author_node({
-                "id": author.author_id,
-                "name": author.name,
-                "h_index": author.h_index,
-                "orcid": author.orcid,
-                "email": author.email
-            })
-            author_node_map[author.author_id] = node_id
+        with driver.session() as session:
+            session.run("MATCH (n) DETACH DELETE n")
+            logger.info("✓ 清空 Neo4j 现有数据")
             
-            if author.org_id and author.org_id in org_node_map:
-                dao.create_relationship(node_id, org_node_map[author.org_id], "AFFILIATED_WITH")
-        logger.info(f"✓ 同步了 {len(authors)} 个作者节点")
-        
-        papers = db.query(PaperInfo).all()
-        paper_node_map = {}
-        for paper in papers:
-            node_id = dao.create_paper_node({
-                "id": paper.paper_id,
-                "title": paper.title,
-                "year": paper.year,
-                "venue": paper.venue,
-                "doi": paper.doi,
-                "keywords": paper.keywords,
-                "citation_count": paper.citation_count
-            })
-            paper_node_map[paper.paper_id] = node_id
-        logger.info(f"✓ 同步了 {len(papers)} 个论文节点")
-        
-        relations = db.query(PaperAuthorRelation).all()
-        for rel in relations:
-            if rel.author_id in author_node_map and rel.paper_id in paper_node_map:
-                dao.create_relationship(
-                    author_node_map[rel.author_id],
-                    paper_node_map[rel.paper_id],
-                    "AUTHORED",
-                    {"order": rel.author_order, "is_corresponding": rel.is_corresponding}
-                )
-        logger.info(f"✓ 同步了 {len(relations)} 个作者-论文关系")
-        
-        session.close()
+            orgs = db.query(OrganizationInfo).all()
+            org_node_map = {}
+            for org in orgs:
+                node_id = dao.create_organization_node({
+                    "id": org.org_id,
+                    "name": org.name,
+                    "country": org.country,
+                    "abbreviation": org.abbreviation,
+                    "rank_score": float(org.rank_score) if org.rank_score else 0
+                })
+                org_node_map[org.org_id] = node_id
+            logger.info(f"✓ 同步了 {len(orgs)} 个组织节点")
+            
+            authors = db.query(AuthorInfo).all()
+            author_node_map = {}
+            for author in authors:
+                node_id = dao.create_author_node({
+                    "id": author.author_id,
+                    "name": author.name,
+                    "h_index": author.h_index,
+                    "orcid": author.orcid,
+                    "email": author.email
+                })
+                author_node_map[author.author_id] = node_id
+                
+                if author.org_id and author.org_id in org_node_map:
+                    dao.create_relationship(node_id, org_node_map[author.org_id], "AFFILIATED_WITH")
+            logger.info(f"✓ 同步了 {len(authors)} 个作者节点")
+            
+            papers = db.query(PaperInfo).all()
+            paper_node_map = {}
+            for paper in papers:
+                node_id = dao.create_paper_node({
+                    "id": paper.paper_id,
+                    "title": paper.title,
+                    "year": paper.year,
+                    "venue": paper.venue,
+                    "doi": paper.doi,
+                    "keywords": paper.keywords,
+                    "citation_count": paper.citation_count
+                })
+                paper_node_map[paper.paper_id] = node_id
+            logger.info(f"✓ 同步了 {len(papers)} 个论文节点")
+            
+            relations = db.query(PaperAuthorRelation).all()
+            for rel in relations:
+                if rel.author_id in author_node_map and rel.paper_id in paper_node_map:
+                    dao.create_relationship(
+                        author_node_map[rel.author_id],
+                        paper_node_map[rel.paper_id],
+                        "AUTHORED",
+                        {"order": rel.author_order, "is_corresponding": rel.is_corresponding}
+                    )
+            logger.info(f"✓ 同步了 {len(relations)} 个作者-论文关系")
+            
+            session.close()
         
     except Exception as e:
         logger.error(f"✗ 同步到 Neo4j 失败: {e}")
