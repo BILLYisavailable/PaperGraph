@@ -166,38 +166,38 @@ class GraphDAO:
                 logger.error(f"查询子节点失败: {e}")
                 raise
         
-        def query_node_info(self, node_id: str) -> Optional[Dict[str, Any]]:
-            """
-            查询节点详细信息
+    def query_node_info(self, node_id: str) -> Optional[Dict[str, Any]]:
+        """
+        查询节点详细信息
+        
+        Args:
+            node_id: 节点ID
             
-            Args:
-                node_id: 节点ID
+        Returns:
+            节点信息字典
+        """
+        query = """
+        MATCH (n)
+        WHERE id(n) = $node_id
+        RETURN n, labels(n) as labels
+        """
+        with self.driver.session() as session:
+            try:
+                result = session.run(query, node_id=int(node_id))
+                record = result.single()
                 
-            Returns:
-                节点信息字典
-            """
-            query = """
-            MATCH (n)
-            WHERE id(n) = $node_id
-            RETURN n, labels(n) as labels
-            """
-            with self.driver.session() as session:
-                try:
-                    result = session.run(query, node_id=int(node_id))
-                    record = result.single()
-                    
-                    if record:
-                        node = record["n"]
-                        return {
-                            "id": str(node.id),
-                            "label": record["labels"][0] if record["labels"] else "Node",
-                            "properties": dict(node)
-                        }
-                    return None
-                
-                except Exception as e:
-                    logger.error(f"查询节点信息失败: {e}")
-                    raise
+                if record:
+                    node = record["n"]
+                    return {
+                        "id": str(node.id),
+                        "label": record["labels"][0] if record["labels"] else "Node",
+                        "properties": dict(node)
+                    }
+                return None
+            
+            except Exception as e:
+                logger.error(f"查询节点信息失败: {e}")
+                raise
     
     def save_layout(self, layout_data: List[Dict[str, Any]]) -> bool:
         """
