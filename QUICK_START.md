@@ -11,8 +11,6 @@
 
 ---
 
-## Windows 用户 / Windows Users
-
 ### 1️⃣ 安装依赖环境
 
 下载并安装（如未安装）/ Download and install (if not installed):
@@ -20,8 +18,9 @@
 1. MySQL: https://dev.mysql.com/downloads/installer/
 2. Neo4j Desktop: https://neo4j.com/download/
 3. Memurai (Redis for Windows): https://www.memurai.com/get-memurai
+4. Node.js 16+ (for frontend): https://nodejs.org/
 
-### 2️⃣ 一键配置环境
+### 2️⃣ 一键配置后端环境
 
 ```cmd
 setup.bat
@@ -63,7 +62,13 @@ EXIT;
 4. 点击 "Start" 启动数据库
 5. 设置密码（与 .env 中的密码一致）
 
-### 6️⃣ 初始化数据库
+### 6️⃣ 启动 Memurai (Redis)
+
+```cmd
+net start Memurai
+```
+
+### 7️⃣ 初始化数据库
 
 ```cmd
 venv\Scripts\activate
@@ -71,7 +76,7 @@ python scripts\init_database.py
 python scripts\load_sample_data.py
 ```
 
-### 7️⃣ 启动服务
+### 8️⃣ 启动后端服务
 
 打开两个命令行窗口 / Open two command line windows:
 
@@ -85,112 +90,31 @@ start_server.bat
 start_celery.bat
 ```
 
-### 8️⃣ 访问系统
+### 9️⃣ 启动前端服务
+
+打开第三个命令行窗口 / Open third command line window:
+
+```cmd
+cd knowledge_graph_system_v2\knowledge_graph_system_v2
+
+# 首次运行需要安装依赖
+npm install
+
+# 复制环境配置文件
+copy .env.example .env
+
+# 启动前端
+npm run serve
+```
+
+### 🔟 访问系统
 
 在浏览器中打开 / Open in browser:
 
-http://localhost:8000/docs
+- **前端界面**: http://localhost:3000
+- **API 文档**: http://localhost:8000/docs
 
 🎉 完成！/ Done!
-
----
-
-## Linux/Mac 用户 / Linux/Mac Users
-
-### 1️⃣ 安装依赖
-
-```bash
-# Ubuntu/Debian
-sudo apt update
-sudo apt install python3-pip python3-venv mysql-server redis-server
-
-# macOS
-brew install python mysql redis
-```
-
-### 2️⃣ 安装 Neo4j Desktop
-
-从 https://neo4j.com/download/ 下载并安装
-
-### 3️⃣ 设置项目
-
-```bash
-# 创建虚拟环境
-python3 -m venv venv
-
-# 激活虚拟环境
-source venv/bin/activate
-
-# 安装依赖
-pip install -r requirements.txt
-
-# 创建目录
-mkdir -p logs exports
-```
-
-### 4️⃣ 配置环境变量
-
-```bash
-# 复制配置文件
-cp .env.example .env
-
-# 编辑配置
-nano .env  # 或使用你喜欢的编辑器
-
-# 修改密码
-MYSQL_PASSWORD=你的MySQL密码
-NEO4J_PASSWORD=你的Neo4j密码
-```
-
-### 5️⃣ 创建数据库
-
-```bash
-# MySQL
-mysql -u root -p
-```
-
-```sql
-CREATE DATABASE paper_kg CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-EXIT;
-```
-
-### 6️⃣ 启动服务
-
-```bash
-# 启动 MySQL
-sudo systemctl start mysql  # Linux
-# brew services start mysql  # macOS
-
-# 启动 Redis
-sudo systemctl start redis  # Linux
-# brew services start redis  # macOS
-
-# 启动 Neo4j Desktop 中的数据库
-```
-
-### 7️⃣ 初始化数据库
-
-```bash
-source venv/bin/activate
-python scripts/init_database.py
-python scripts/load_sample_data.py
-```
-
-### 8️⃣ 启动应用
-
-```bash
-# 终端 1: 主服务
-source venv/bin/activate
-python app/main.py
-
-# 终端 2: Celery Worker
-source venv/bin/activate
-celery -A app.tasks.celery_app worker --loglevel=info
-```
-
-### 9️⃣ 访问系统
-
-http://localhost:8000/docs
 
 ---
 
@@ -243,12 +167,8 @@ pip install -r requirements.txt
 
 **原因**: MySQL 服务未启动或密码错误  
 **解决**:
-```bash
-# Windows
+```cmd
 net start MySQL
-
-# Linux
-sudo systemctl start mysql
 ```
 检查 `.env` 文件中的密码是否正确
 
@@ -262,29 +182,34 @@ sudo systemctl start mysql
 
 ### 错误 4: Redis 连接失败
 
-**原因**: Redis 服务未启动  
+**原因**: Memurai 服务未启动  
 **解决**:
-```bash
-# Windows
+```cmd
 net start Memurai
-
-# Linux
-sudo systemctl start redis
 ```
 
-### 错误 5: 端口 8000 被占用
+### 错误 5: 端口被占用
 
 **原因**: 其他程序占用端口  
 **解决**:
-```bash
-# Windows - 查找并结束进程
+```cmd
+# 后端端口 8000
 netstat -ano | findstr :8000
 taskkill /PID <进程ID> /F
 
-# Linux - 查找并结束进程
-lsof -i :8000
-kill -9 <进程ID>
+# 前端端口 3000
+netstat -ano | findstr :3000
+taskkill /PID <进程ID> /F
 ```
+
+### 错误 6: 前端无法连接后端
+
+**原因**: API baseURL 配置错误或后端未启动  
+**解决**:
+1. 检查 `knowledge_graph_system_v2\knowledge_graph_system_v2\.env` 文件是否存在
+2. 确认 `.env` 文件中 `VUE_APP_API_BASE=http://localhost:8000/api/v1`
+3. 确认后端服务已启动（http://localhost:8000/health 可访问）
+4. 重启前端服务
 
 ---
 

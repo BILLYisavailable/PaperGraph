@@ -1,9 +1,9 @@
 <template>
-  <a-layout style="height: 100vh">
+  <a-layout style="height: calc(100vh - 120px); border-radius: 12px; overflow: hidden; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);">
     <!-- 左侧筛选器 -->
-    <a-layout-sider width="280" style="background: #fff">
-      <div style="padding: 16px">
-        <h3>筛选器</h3>
+    <a-layout-sider width="280" style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);">
+      <div style="padding: 20px">
+        <h3 style="font-size: 20px; font-weight: 600; margin-bottom: 20px; color: #333; border-bottom: 2px solid #667eea; padding-bottom: 12px;">筛选器</h3>
         <a-form layout="vertical">
           <a-form-item label="年份">
             <a-slider
@@ -25,7 +25,7 @@
             <a-input v-model:value="filter.author" placeholder="模糊搜索" />
           </a-form-item>
           <a-form-item>
-            <a-button type="primary" block @click="onFilter">
+            <a-button type="primary" block @click="onFilter" size="large" style="height: 40px; border-radius: 8px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none;">
               应用筛选
             </a-button>
           </a-form-item>
@@ -34,14 +34,14 @@
     </a-layout-sider>
 
     <!-- 中间图谱 -->
-    <a-layout-content style="background: #fafafa; position: relative">
+    <a-layout-content style="background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); position: relative">
       <div ref="chartDom" style="width: 100%; height: 100%"></div>
     </a-layout-content>
 
     <!-- 右侧详情 -->
-    <a-layout-sider width="320" style="background: #fff">
-      <div style="padding: 16px">
-        <h3>详细信息</h3>
+    <a-layout-sider width="320" style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);">
+      <div style="padding: 20px">
+        <h3 style="font-size: 20px; font-weight: 600; margin-bottom: 20px; color: #333; border-bottom: 2px solid #667eea; padding-bottom: 12px;">详细信息</h3>
         <div v-if="!selected">请单击节点/边</div>
         <a-form v-else layout="vertical" size="small">
           <a-form-item label="名称">
@@ -263,7 +263,7 @@ function draw(dto: GraphDTO) {
     }));
 
     // 可选：批量保存
-    post("/graph/layout", { positions: updateList })
+    post("/graph/layout/persist", { positions: updateList })
       .then(() => message.success("位置已保存"))
       .catch(() => message.error("保存失败"));
   });

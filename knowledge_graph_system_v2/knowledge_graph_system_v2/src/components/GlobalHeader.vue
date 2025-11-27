@@ -84,18 +84,75 @@ const items = ref<MenuProps["items"]>([
 </script>
 
 <style scoped>
-.title-bar {
+#globalHeader {
+  height: 64px;
   display: flex;
   align-items: center;
 }
 
+.title-bar {
+  display: flex;
+  align-items: center;
+  transition: transform 0.3s ease;
+}
+
+.title-bar:hover {
+  transform: translateX(4px);
+}
+
 .title {
-  color: black;
-  font-size: 18px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-size: 20px;
+  font-weight: 600;
   margin-left: 16px;
+  letter-spacing: 0.5px;
 }
 
 .logo {
-  height: 48px;
+  height: 40px;
+  width: 40px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: transform 0.3s ease;
+}
+
+.logo:hover {
+  transform: scale(1.1) rotate(5deg);
+}
+
+.user-login-status {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+:deep(.ant-menu) {
+  background: transparent;
+  border-bottom: none;
+  line-height: 62px;
+}
+
+:deep(.ant-menu-item) {
+  margin: 0 8px;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+:deep(.ant-menu-item:hover) {
+  background: rgba(102, 126, 234, 0.1);
+  transform: translateY(-2px);
+}
+
+:deep(.ant-menu-item-selected) {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-bottom: none;
+}
+
+:deep(.ant-menu-item-selected::after) {
+  display: none;
 }
 </style>

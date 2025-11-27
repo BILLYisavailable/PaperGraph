@@ -1,5 +1,9 @@
 <template>
-  <a-card title="文献列表" style="margin: 16px">
+  <a-card 
+    title="文献列表" 
+    :bordered="false"
+    style="margin: 16px; border-radius: 12px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1); background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);"
+  >
     <!-- 搜索条 -->
     <a-row :gutter="16" style="margin-bottom: 16px">
       <a-col :span="18">
@@ -83,28 +87,43 @@ function handleTableChange(pager: any) {
 async function loadData() {
   loading.value = true;
   try {
-    /* 后端已经支持全文检索，把搜索框内容直接当 q 参数 */
+    /* 后端返回格式：{nodes: [{id, label, properties: {...}}], edges: [...]} */
     const res = await get("/graph/root", {
       limit: 200, // 先拉 200 条，前端再分页
-      q: searchKey.value.trim(),
+      author: searchKey.value.trim(), // 使用author参数进行搜索
     });
+    
     /* 把图节点转成 Paper 类型 */
+    // 后端返回格式：nodes = [{id, label, properties: {title, year, ...}}]
     const papers: Paper[] = res.nodes
-      .filter((n: any) => n.type === "Paper")
-      .map((n: any) => ({
-        id: n.id,
-        title: n.title,
-        authors: n.authors || [],
-        orgs: n.orgs || [],
-        year: n.year || 0,
-        url: n.url || `https://doi.org/${n.doi}`,
-      }));
+      .filter((n: any) => n.label === "Paper" || n.type === "Paper")
+      .map((n: any) => {
+        const props = n.properties || {};
+        // 如果搜索关键词不为空，进行前端过滤
+        const searchLower = searchKey.value.toLowerCase().trim();
+        const matchesSearch = !searchLower || 
+          (props.title || "").toLowerCase().includes(searchLower) ||
+          (props.name || "").toLowerCase().includes(searchLower);
+        
+        if (!matchesSearch) return null;
+        
+        return {
+          id: n.id,
+          title: props.title || props.name || "未知标题",
+          authors: props.authors || [],
+          orgs: props.orgs || [],
+          year: props.year || 0,
+          url: props.url || (props.doi ? `https://doi.org/${props.doi}` : "#"),
+        };
+      })
+      .filter((p: Paper | null) => p !== null) as Paper[];
 
-    const filtered = papers; // 如需再过滤可继续
     const { current = 1, pageSize = 10 } = pagination.value;
     const start = (current - 1) * pageSize;
-    data.value = filtered.slice(start, start + pageSize);
-    pagination.value.total = filtered.length;
+    data.value = papers.slice(start, start + pageSize);
+    pagination.value.total = papers.length;
+  } catch (error) {
+    console.error("加载论文列表失败:", error);
   } finally {
     loading.value = false;
   }

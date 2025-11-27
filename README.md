@@ -34,31 +34,14 @@ This project implements a complete backend system for paper knowledge graph with
 1. **Python 3.9+** - [Download](https://www.python.org/downloads/)
 2. **MySQL 8.0+** - [Download](https://dev.mysql.com/downloads/installer/)
 3. **Neo4j Desktop** - [Download](https://neo4j.com/download/)
-4. **Redis** (Windows: Memurai) - [Download Memurai](https://www.memurai.com/get-memurai)
+4. **Memurai (Redis for Windows)** - [Download Memurai](https://www.memurai.com/get-memurai)
 
 ### 1️⃣ Clone and Setup Environment / 克隆并设置环境
 
-#### Windows:
 ```bash
 # Run setup script (creates venv and installs dependencies)
 # 运行设置脚本（创建虚拟环境并安装依赖）
 setup.bat
-```
-
-#### Linux/Mac:
-```bash
-# Create virtual environment / 创建虚拟环境
-python -m venv venv
-
-# Activate virtual environment / 激活虚拟环境
-source venv/bin/activate  # Linux/Mac
-# venv\Scripts\activate   # Windows
-
-# Install dependencies / 安装依赖
-pip install -r requirements.txt
-
-# Create necessary directories / 创建必要目录
-mkdir -p logs exports
 ```
 
 ### 2️⃣ Configure Environment / 配置环境
@@ -95,35 +78,29 @@ EXIT;
 3. Start the database / 启动数据库
 4. Set password in `.env` file / 在 `.env` 文件中设置密码
 
-#### Redis:
-- **Windows**: Start Memurai service / 启动 Memurai 服务
-  ```bash
-  net start Memurai
-  ```
-- **Linux**: Start Redis service / 启动 Redis 服务
-  ```bash
-  sudo systemctl start redis
-  ```
+#### Redis (Memurai):
+启动 Memurai 服务 / Start Memurai service:
+```bash
+net start Memurai
+```
 
 ### 4️⃣ Initialize Databases / 初始化数据库
 
 ```bash
 # Activate virtual environment / 激活虚拟环境
-venv\Scripts\activate  # Windows
-# source venv/bin/activate  # Linux/Mac
+venv\Scripts\activate
 
 # Initialize all databases (creates tables, indexes, constraints)
 # 初始化所有数据库（创建表、索引、约束）
-python scripts/init_database.py
+python scripts\init_database.py
 
 # Load sample data (optional)
 # 加载示例数据（可选）
-python scripts/load_sample_data.py
+python scripts\load_sample_data.py
 ```
 
 ### 5️⃣ Start Services / 启动服务
 
-#### Windows:
 ```bash
 # Terminal 1: Start main server / 终端1：启动主服务
 start_server.bat
@@ -133,19 +110,29 @@ start_server.bat
 start_celery.bat
 ```
 
-#### Linux/Mac:
-```bash
-# Terminal 1: Start main server / 终端1：启动主服务
-source venv/bin/activate
-python -m app.main
+### 6️⃣ Start Frontend / 启动前端
 
-# Terminal 2: Start Celery worker / 终端2：启动 Celery worker
-source venv/bin/activate
-celery -A app.tasks.celery_app worker --loglevel=info
+```bash
+# Navigate to frontend directory / 进入前端目录
+cd knowledge_graph_system_v2\knowledge_graph_system_v2
+
+# Install dependencies (first time only) / 安装依赖（仅首次）
+npm install
+
+# Copy environment file / 复制环境配置文件
+copy .env.example .env
+
+# Start frontend development server / 启动前端开发服务器
+npm run serve
 ```
 
-### 6️⃣ Access System / 访问系统
+前端将运行在 http://localhost:3000
 
+The frontend will run at http://localhost:3000
+
+### 7️⃣ Access System / 访问系统
+
+- **Frontend / 前端界面**: http://localhost:3000
 - **API Documentation / API文档**: http://localhost:8000/docs
 - **ReDoc**: http://localhost:8000/redoc
 - **Health Check / 健康检查**: http://localhost:8000/health
@@ -209,11 +196,7 @@ PaperGraph/
 ### MySQL连接失败 / MySQL Connection Failed
 - 确认MySQL服务已启动 / Ensure MySQL service is running:
   ```bash
-  # Windows
   net start MySQL
-  
-  # Linux
-  sudo systemctl start mysql
   ```
 - 检查`.env`中的密码是否正确 / Check password in `.env`
 - 确认数据库已创建 / Verify database is created
@@ -224,13 +207,9 @@ PaperGraph/
 - 确认用户名和密码正确 / Verify username and password
 
 ### Redis连接失败 / Redis Connection Failed
-- **Windows**: 确认Memurai服务已启动 / Ensure Memurai service is running:
+- 确认Memurai服务已启动 / Ensure Memurai service is running:
   ```bash
   net start Memurai
-  ```
-- **Linux**: 确认Redis服务已启动 / Ensure Redis service is running:
-  ```bash
-  sudo systemctl start redis
   ```
 - 检查端口6379是否被占用 / Check if port 6379 is available
 
@@ -243,13 +222,13 @@ PaperGraph/
 
 ### 端口被占用 / Port Already in Use
 ```bash
-# Windows - Find and kill process
+# Find and kill process / 查找并结束进程
 netstat -ano | findstr :8000
 taskkill /PID <process_id> /F
 
-# Linux/Mac - Find and kill process
-lsof -i :8000
-kill -9 <process_id>
+# For frontend port / 前端端口
+netstat -ano | findstr :3000
+taskkill /PID <process_id> /F
 ```
 
 ## 📖 API使用示例 / API Usage Examples
