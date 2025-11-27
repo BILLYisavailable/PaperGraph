@@ -64,6 +64,22 @@
     <a-layout-content
       style="background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); position: relative"
     >
+      <!-- 缩放控制按钮 -->
+      <div
+        style="
+          position: absolute;
+          right: 16px;
+          bottom: 16px;
+          z-index: 10;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        "
+      >
+        <a-button size="small" shape="circle" @click="zoomGraph(1.2)">+</a-button>
+        <a-button size="small" shape="circle" @click="zoomGraph(0.8)">-</a-button>
+      </div>
+
       <div ref="chartDom" style="width: 100%; height: 100%"></div>
     </a-layout-content>
 
@@ -139,7 +155,7 @@ import { ref, onMounted } from "vue";
 import * as echarts from "echarts";
 import type { GraphDTO, Node, Edge } from "@/types/graph";
 import { message } from "ant-design-vue";
-import { fetchRootGraph, fetchChildrenGraph, persistLayout, type GraphResponse } from "@/api/graph";
+import { fetchRootGraph, persistLayout, type GraphResponse } from "@/api/graph";
 /* 筛选状态 */
 const filter = ref({
   year: [2020, 2025],
@@ -153,9 +169,15 @@ const orgOptions = ref<{ label: string; value: string }[]>([]);
 /* 选中项 */
 const selected = ref<Node | null>(null);
 
-/* 当前图数据和展开状态（用于子树显隐） */
-const graphData = ref<GraphDTO>({ nodes: [], edges: [] });
-const expandedNodes = ref<Set<string>>(new Set());
+/* 完整图数据（包含所有单位 / 作者 / 论文） */
+const fullGraph = ref<GraphDTO>({ nodes: [], edges: [] });
+
+/* 当前展示的图数据（用于控制显隐） */
+const visibleGraph = ref<GraphDTO>({ nodes: [], edges: [] });
+
+/* 展开状态：哪些作者的论文已展开，哪些单位被折叠 */
+const expandedAuthors = ref<Set<string>>(new Set());
+const hiddenOrgs = ref<Set<string>>(new Set());
 
 /* 图谱实例 */
 const chartDom = ref<HTMLDivElement>();
@@ -168,12 +190,29 @@ const lineStyleMap: Record<string, any> = {
 };
 
 /**
+ * 图谱缩放（通过 ECharts graphRoam 动作）
+ * factor > 1 放大，factor < 1 缩小
+ */
+function zoomGraph(factor: number) {
+  if (!ins) return;
+  try {
+    (ins as any).dispatchAction({
+      type: "graphRoam",
+      zoom: factor,
+    });
+  } catch (e) {
+    console.warn("图谱缩放失败:", e);
+  }
+}
+
+/**
  * 应用筛选并加载数据
  */
 async function onFilter() {
   try {
     // 每次筛选重置展开状态
-    expandedNodes.value = new Set();
+    expandedAuthors.value = new Set();
+    hiddenOrgs.value = new Set();
 
     const params = {
       limit: 1000,
@@ -245,8 +284,19 @@ async function onFilter() {
       edges: processedEdges,
     };
 
-    graphData.value = dto;
-    draw(graphData.value);
+    // 保存完整图数据
+    fullGraph.value = dto;
+
+    // 初始展示：只显示单位 + 作者，以及单位-作者之间的关系
+    const initialNodes = processedNodes.filter((n) => n.type !== "Paper");
+    const initialEdges = processedEdges.filter((e) => e.relation === "AFFILIATED_WITH");
+
+    visibleGraph.value = {
+      nodes: initialNodes,
+      edges: initialEdges,
+    };
+
+    draw(visibleGraph.value);
   } catch (error) {
     console.error("筛选失败:", error);
     message.error(`加载图谱失败: ${error instanceof Error ? error.message : "未知错误"}`);
@@ -314,8 +364,9 @@ function draw(dto: GraphDTO) {
   ins.off("click");
   ins.on("click", (params) => {
     if (params.dataType === "node") {
-      handleNodeClick(params.data.id);
-      selected.value = params.data as Node;
+      const node = params.data as Node;
+      handleNodeClick(node);
+      selected.value = node;
     }
   });
   ins.off("graphdragend"); // 防止重复绑定
@@ -341,145 +392,155 @@ function draw(dto: GraphDTO) {
 }
 
 /**
- * 点击节点：展开 / 折叠其子树
+ * 点击节点：单位/作者展开或折叠
  */
-function handleNodeClick(nodeId: string) {
-  if (expandedNodes.value.has(nodeId)) {
-    // 已展开 -> 折叠子树
-    collapseSubtree(nodeId);
-    expandedNodes.value.delete(nodeId);
+function handleNodeClick(node: Node) {
+  if (node.type === "Author") {
+    toggleAuthorPapers(node.id);
+  } else if (node.type === "Organization") {
+    toggleOrganizationSubtree(node.id);
+  }
+}
+
+/**
+ * 展开 / 折叠某个作者名下的所有论文
+ * - 初始不显示任何论文
+ * - 点击作者：显示其全部论文
+ * - 再次点击：隐藏其全部论文
+ */
+function toggleAuthorPapers(authorId: string) {
+  // 找到该作者在完整图中的所有 AUTHOR->PAPER 边
+  const authoredEdges = fullGraph.value.edges.filter(
+    (e) => e.relation === "AUTHORED" && (e.source === authorId || e.target === authorId)
+  );
+
+  const paperIds = new Set(authoredEdges.map((e) => (e.source === authorId ? e.target : e.source)));
+
+  if (expandedAuthors.value.has(authorId)) {
+    // 已展开 -> 折叠：从可见图中移除这些论文节点和对应边
+    const newNodes = visibleGraph.value.nodes.filter(
+      (n) => !(n.type === "Paper" && paperIds.has(n.id))
+    );
+    const newEdges = visibleGraph.value.edges.filter(
+      (e) =>
+        !(
+          e.relation === "AUTHORED" &&
+          (paperIds.has(e.source) || paperIds.has(e.target) || e.source === authorId)
+        )
+    );
+
+    visibleGraph.value = { nodes: newNodes, edges: newEdges };
+    expandedAuthors.value.delete(authorId);
   } else {
-    // 未展开 -> 加载子图并合并
-    loadAndMergeSubgraph(nodeId);
-    expandedNodes.value.add(nodeId);
-  }
-}
+    // 未展开 -> 展开：向可见图中添加这些论文节点和 AUTHOR->PAPER 边
+    const paperNodes = fullGraph.value.nodes.filter(
+      (n) => n.type === "Paper" && paperIds.has(n.id)
+    );
 
-/**
- * 绘制/重绘图谱
- */
-
-/**
- * 加载子图并合并到当前图谱
- */
-async function loadAndMergeSubgraph(nodeId: string) {
-  try {
-    console.log("【调试】请求子图，节点 ID:", nodeId);
-
-    const sub = await fetchChildrenGraph(nodeId);
-
-    // 同样需要转换数据格式
-    const processedSubNodes: Node[] = sub.nodes.map((node) => {
-      const props = node.properties || {};
-      const type = node.label as "Paper" | "Author" | "Organization";
-
-      const base: Node = {
-        id: props.id || node.id,
-        type,
-        label: props.name || props.title || node.label,
-        ...props,
-      };
-
-      if (type === "Author") {
-        base.hIndex = props.h_index ?? props.hIndex;
-        base.orcid = props.orcid;
-      } else if (type === "Organization") {
-        base.country = props.country;
-        const rankScore = props.rank_score ?? props.rank;
-        base.rank = typeof rankScore === "number" ? rankScore : Number(rankScore || 0);
-      } else if (type === "Paper") {
-        base.title = props.title;
-        base.year = props.year;
-        base.venue = props.venue;
-        base.doi = props.doi;
-      }
-
-      return base;
-    });
-
-    // 边去重
-    const edgeMap = new Map<string, Edge>();
-    [...graphData.value.edges, ...sub.edges].forEach((edge: any) => {
-      const key = `${edge.source}-${edge.target}-${edge.type}`;
-      if (!edgeMap.has(key)) {
-        edgeMap.set(key, {
-          source: edge.source,
-          target: edge.target,
-          relation: edge.type,
-          ...(edge.properties || {}),
-        });
-      }
-    });
-    const mergedEdges = Array.from(edgeMap.values());
-
-    // 节点去重合并
     const nodeMap = new Map<string, Node>();
-    graphData.value.nodes.forEach((n) => nodeMap.set(n.id, n));
-    processedSubNodes.forEach((n) => {
-      if (!nodeMap.has(n.id)) {
-        nodeMap.set(n.id, n);
-      }
+    visibleGraph.value.nodes.forEach((n) => nodeMap.set(n.id, n));
+    paperNodes.forEach((n) => nodeMap.set(n.id, n));
+
+    const edgeMap = new Map<string, Edge>();
+    visibleGraph.value.edges.forEach((e) =>
+      edgeMap.set(`${e.source}-${e.target}-${e.relation}`, e)
+    );
+    authoredEdges.forEach((e) => {
+      edgeMap.set(`${e.source}-${e.target}-${e.relation}`, {
+        source: e.source,
+        target: e.target,
+        relation: e.relation as Edge["relation"],
+        ...(e as any).properties,
+      });
     });
 
-    graphData.value = {
+    visibleGraph.value = {
       nodes: Array.from(nodeMap.values()),
-      edges: mergedEdges,
+      edges: Array.from(edgeMap.values()),
     };
-
-    draw(graphData.value);
-  } catch (error) {
-    console.error("加载子图失败:", error);
-    message.error(`加载子节点失败: ${error instanceof Error ? error.message : "未知错误"}`);
+    expandedAuthors.value.add(authorId);
   }
+
+  draw(visibleGraph.value);
 }
 
 /**
- * 折叠某个节点的整棵子树（单位-作者-论文关系）
- * 规则：从该节点沿 AUTHORED / AFFILIATED_WITH 关系做 BFS，删除除根节点外的所有可达节点
+ * 展开 / 折叠某个单位的整棵子树
+ * - 初始：所有单位及其作者可见，但不显示论文
+ * - 点击单位：
+ *    - 若当前可见：隐藏该单位下的所有作者及其论文
+ *    - 若当前已隐藏：只恢复作者和 AFFILIATED_WITH 边，不自动展开论文
  */
-function collapseSubtree(rootId: string) {
-  const removable = new Set<string>();
-  const visited = new Set<string>([rootId]);
-  const queue: string[] = [rootId];
-
-  const edges = graphData.value.edges.filter(
-    (e) => e.relation === "AUTHORED" || e.relation === "AFFILIATED_WITH"
+function toggleOrganizationSubtree(orgId: string) {
+  // 找出该单位下的所有作者
+  const orgEdges = fullGraph.value.edges.filter(
+    (e) => e.relation === "AFFILIATED_WITH" && (e.source === orgId || e.target === orgId)
   );
 
-  // 建邻接表（无向），方便沿树状结构遍历
-  const adj = new Map<string, string[]>();
-  edges.forEach((e) => {
-    if (!adj.has(e.source)) adj.set(e.source, []);
-    if (!adj.has(e.target)) adj.set(e.target, []);
-    adj.get(e.source)!.push(e.target);
-    adj.get(e.target)!.push(e.source);
-  });
+  const authorIds = new Set(
+    orgEdges.map((e) => (e.source === orgId ? e.target : e.source)).filter(Boolean)
+  );
 
-  while (queue.length) {
-    const current = queue.shift()!;
-    const neighbors = adj.get(current) || [];
-    neighbors.forEach((n) => {
-      if (!visited.has(n)) {
-        visited.add(n);
-        removable.add(n); // 根节点本身不加入 removable
-        queue.push(n);
-      }
-    });
+  if (!authorIds.size) {
+    return;
   }
 
-  if (removable.size === 0) return;
+  if (hiddenOrgs.value.has(orgId)) {
+    // 单位当前是“折叠”状态 -> 展开：恢复作者和单位-作者边
+    const nodeMap = new Map<string, Node>();
+    visibleGraph.value.nodes.forEach((n) => nodeMap.set(n.id, n));
 
-  const newNodes = graphData.value.nodes.filter((n) => !removable.has(n.id));
-  const newEdges = graphData.value.edges.filter(
-    (e) => !removable.has(e.source) && !removable.has(e.target)
-  );
+    const authorNodes = fullGraph.value.nodes.filter(
+      (n) => n.type === "Author" && authorIds.has(n.id)
+    );
+    authorNodes.forEach((n) => nodeMap.set(n.id, n));
 
-  graphData.value = {
-    nodes: newNodes,
-    edges: newEdges,
-  };
+    const edgeMap = new Map<string, Edge>();
+    visibleGraph.value.edges.forEach((e) =>
+      edgeMap.set(`${e.source}-${e.target}-${e.relation}`, e)
+    );
+    orgEdges.forEach((e) => {
+      edgeMap.set(`${e.source}-${e.target}-${e.relation}`, {
+        source: e.source,
+        target: e.target,
+        relation: e.relation as Edge["relation"],
+        ...(e as any).properties,
+      });
+    });
 
-  draw(graphData.value);
+    visibleGraph.value = {
+      nodes: Array.from(nodeMap.values()),
+      edges: Array.from(edgeMap.values()),
+    };
+    hiddenOrgs.value.delete(orgId);
+  } else {
+    // 单位当前是“展开”状态 -> 折叠：隐藏该单位下所有作者及其论文
+    // 先找出这些作者对应的所有论文
+    const authoredEdges = fullGraph.value.edges.filter(
+      (e) => e.relation === "AUTHORED" && authorIds.has(e.source)
+    );
+    const paperIds = new Set(authoredEdges.map((e) => e.target));
+
+    // 从可见图中删除这些作者和论文以及所有相关边
+    const newNodes = visibleGraph.value.nodes.filter(
+      (n) => !authorIds.has(n.id) && !paperIds.has(n.id)
+    );
+    const newEdges = visibleGraph.value.edges.filter(
+      (e) =>
+        !authorIds.has(e.source) &&
+        !authorIds.has(e.target) &&
+        !paperIds.has(e.source) &&
+        !paperIds.has(e.target)
+    );
+
+    visibleGraph.value = { nodes: newNodes, edges: newEdges };
+
+    // 清理这些作者的“已展开论文”状态
+    authorIds.forEach((id) => expandedAuthors.value.delete(id));
+    hiddenOrgs.value.add(orgId);
+  }
+
+  draw(visibleGraph.value);
 }
 
 function tagColor(type: string) {

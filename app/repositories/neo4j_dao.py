@@ -20,17 +20,17 @@ class GraphDAO:
         orgs       = params.get("orgs", [])          # ["Tsinghua", "PKU"]
         author     = params.get("author", "").strip()
         # ✅ 用业务 id 作为 source/target，不再用内部数字 id
+        # 根图查询：从“单位 -> 作者 -> 论文”树形结构出发，
+        # 先保证所有单位-作者关系存在，再可选挂上作者-论文关系
         cypher = """
-        MATCH (a:Author)-[r:AUTHORED]->(b:Paper)
-        WHERE a.id IS NOT NULL AND b.id IS NOT NULL
-        OPTIONAL MATCH (a)-[r2:AFFILIATED_WITH]->(o:Organization)
+        MATCH (o:Organization)<-[r2:AFFILIATED_WITH]-(a:Author)
+        OPTIONAL MATCH (a)-[r:AUTHORED]->(b:Paper)
         WHERE
         ($year_start IS NULL OR b.year >= $year_start) AND
         ($year_end   IS NULL OR b.year <= $year_end)   AND
         ($author     = ""    OR  a.name CONTAINS $author) AND
         ($orgs       = []   OR o.name IN $orgs)
 
-        LIMIT $limit
         RETURN
             a.id   AS a_id,
             b.id   AS b_id,
@@ -40,6 +40,7 @@ class GraphDAO:
             o      AS o_node,
             r      AS rel,
             r2     AS rel2
+        LIMIT $limit
         """
         nodes: List[Dict] = []
         edges: List[Dict] = []
