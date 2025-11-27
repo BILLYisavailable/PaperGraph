@@ -64,22 +64,6 @@
     <a-layout-content
       style="background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); position: relative"
     >
-      <!-- 缩放控制按钮 -->
-      <div
-        style="
-          position: absolute;
-          right: 16px;
-          bottom: 16px;
-          z-index: 10;
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-        "
-      >
-        <a-button size="small" shape="circle" @click="zoomGraph(1.2)">+</a-button>
-        <a-button size="small" shape="circle" @click="zoomGraph(0.8)">-</a-button>
-      </div>
-
       <div ref="chartDom" style="width: 100%; height: 100%"></div>
     </a-layout-content>
 
@@ -183,6 +167,9 @@ const hiddenOrgs = ref<Set<string>>(new Set());
 const chartDom = ref<HTMLDivElement>();
 let ins: echarts.ECharts;
 
+/* 保存节点位置，用于展开/折叠时保持相对位置 */
+const nodePositions = ref<Map<string, { x: number; y: number }>>(new Map());
+
 const lineStyleMap: Record<string, any> = {
   // 作者-论文边：绿色
   AUTHORED: { width: 2, color: "#52c41a", type: "solid", opacity: 0.9 },
@@ -193,28 +180,48 @@ const lineStyleMap: Record<string, any> = {
 };
 
 /**
- * 图谱缩放（通过 ECharts graphRoam 动作）
- * factor > 1 放大，factor < 1 缩小
+ * 保存当前所有节点的位置
  */
-function zoomGraph(factor: number) {
+function saveNodePositions() {
   if (!ins) return;
   try {
     const option = ins.getOption() as any;
-    const series = option.series?.[0] || {};
-    const currentZoom = typeof series.zoom === "number" ? series.zoom : 1;
-    const newZoom = Math.max(0.2, Math.min(5, currentZoom * factor));
-
-    ins.setOption({
-      series: [
-        {
-          ...series,
-          zoom: newZoom,
-        },
-      ],
+    const nodes = option.series?.[0]?.data || [];
+    nodes.forEach((node: any) => {
+      if (node.x !== undefined && node.y !== undefined) {
+        nodePositions.value.set(node.id, { x: node.x, y: node.y });
+      }
     });
   } catch (e) {
-    console.warn("图谱缩放失败:", e);
+    console.warn("保存节点位置失败:", e);
   }
+}
+
+/**
+ * 获取节点的位置（如果已保存）
+ */
+function getNodePosition(nodeId: string): { x: number; y: number } | null {
+  return nodePositions.value.get(nodeId) || null;
+}
+
+/**
+ * 为新节点计算位置（放在父节点附近）
+ */
+function calculateNewNodePosition(
+  parentNodeId: string,
+  index: number,
+  total: number
+): { x: number; y: number } | null {
+  const parentPos = getNodePosition(parentNodeId);
+  if (!parentPos) return null;
+
+  // 在父节点周围均匀分布新节点
+  const angle = (index / total) * Math.PI * 2;
+  const radius = 80; // 距离父节点的距离
+  return {
+    x: parentPos.x + Math.cos(angle) * radius,
+    y: parentPos.y + Math.sin(angle) * radius,
+  };
 }
 
 /**
@@ -339,7 +346,8 @@ async function onFilter() {
       edges: initialEdges,
     };
 
-    draw(visibleGraph.value);
+    // 初始加载，使用正常布局
+    draw(visibleGraph.value, false);
   } catch (error) {
     console.error("筛选失败:", error);
     message.error(`加载图谱失败: ${error instanceof Error ? error.message : "未知错误"}`);
@@ -348,8 +356,10 @@ async function onFilter() {
 
 /**
  * 绘制/重绘图谱
+ * @param dto 图数据
+ * @param preservePositions 是否保留现有节点位置（展开/折叠时使用）
  */
-function draw(dto: GraphDTO) {
+function draw(dto: GraphDTO, preservePositions = false) {
   if (!chartDom.value) return;
   if (!ins) ins = echarts.init(chartDom.value);
 
@@ -358,11 +368,24 @@ function draw(dto: GraphDTO) {
     Author: "#f2d545",
     Organization: "#67c23a",
   };
-  console.log("【边数据】links 长度:", dto.edges.length, dto.edges);
-  console.log(
-    "【节点类型检查】",
-    dto.nodes.map((n) => ({ id: n.id, label: n.label, type: n.type }))
-  );
+
+  // 如果保留位置，先保存当前所有节点位置
+  if (preservePositions) {
+    saveNodePositions();
+  }
+
+  // 统计每个作者下的论文数量（用于计算新论文位置）
+  const authorPaperCounts = new Map<string, number>();
+  dto.edges.forEach((e) => {
+    if (e.relation === "AUTHORED") {
+      const authorId = e.source;
+      authorPaperCounts.set(authorId, (authorPaperCounts.get(authorId) || 0) + 1);
+    }
+  });
+
+  // 为每个作者跟踪已分配的论文索引
+  const authorPaperIndices = new Map<string, number>();
+
   const option: echarts.EChartsOption = {
     tooltip: {
       formatter: (params: any) => {
@@ -378,17 +401,74 @@ function draw(dto: GraphDTO) {
       {
         type: "graph",
         layout: "force",
-        roam: true,
-        draggable: true,
-        data: dto.nodes.map((n) => ({
-          id: n.id,
-          name: n.label,
-          symbolSize: n.type === "Organization" ? 28 : n.type === "Paper" ? 30 : 20,
-          itemStyle: {
-            color: n.type === "Organization" ? "#e60000" : color[n.type],
-          },
-          ...n,
-        })),
+        roam: true, // 允许平移和缩放（鼠标拖动平移，滚轮缩放）
+        draggable: false, // 禁用节点拖动，避免位置错乱
+        data: dto.nodes.map((n) => {
+          const isOrgOrAuthor = n.type === "Organization" || n.type === "Author";
+
+          // 构建基础节点数据
+          const nodeData: any = {
+            id: n.id,
+            name: n.label,
+            type: n.type,
+            symbolSize: n.type === "Organization" ? 28 : n.type === "Paper" ? 30 : 20,
+            itemStyle: {
+              color: n.type === "Organization" ? "#e60000" : color[n.type],
+            },
+            value: n.label,
+            label: isOrgOrAuthor
+              ? {
+                  show: true,
+                  position: "right",
+                  distance: 8,
+                  fontSize: 11,
+                  color: "#333",
+                  fontWeight: 500,
+                  backgroundColor: "rgba(255, 255, 255, 0.85)",
+                  borderColor: "#ddd",
+                  borderWidth: 1,
+                  borderRadius: 4,
+                  padding: [2, 6],
+                  formatter: n.label,
+                }
+              : {
+                  show: false,
+                },
+            ...n,
+          };
+
+          // 如果保留位置，恢复已保存的位置
+          if (preservePositions) {
+            const savedPos = getNodePosition(n.id);
+            if (savedPos) {
+              // 恢复已保存的位置
+              nodeData.x = savedPos.x;
+              nodeData.y = savedPos.y;
+              nodeData.fixed = true; // 固定位置
+            } else if (n.type === "Paper") {
+              // 新添加的论文节点，放在父作者附近
+              const authoredEdge = dto.edges.find(
+                (e) => e.relation === "AUTHORED" && (e.target === n.id || e.source === n.id)
+              );
+              if (authoredEdge) {
+                const authorId = authoredEdge.source;
+                const index = authorPaperIndices.get(authorId) || 0;
+                const total = authorPaperCounts.get(authorId) || 1;
+                const newPos = calculateNewNodePosition(authorId, index, total);
+                if (newPos) {
+                  nodeData.x = newPos.x;
+                  nodeData.y = newPos.y;
+                  nodeData.fixed = true;
+                  // 保存新位置
+                  nodePositions.value.set(n.id, newPos);
+                }
+                authorPaperIndices.set(authorId, index + 1);
+              }
+            }
+          }
+
+          return nodeData;
+        }),
         links: dto.edges.map((e) => ({
           source: e.source,
           target: e.target,
@@ -396,35 +476,81 @@ function draw(dto: GraphDTO) {
           lineStyle: lineStyleMap[e.relation] || { width: 1.5, color: "#999" },
         })),
         categories: Object.keys(color).map((name) => ({ name })),
-        force: { repulsion: 800, edgeLength: 120, gravity: 0.05 },
+        force: preservePositions
+          ? {
+              // 保留位置模式：完全禁用布局计算
+              repulsion: 0,
+              edgeLength: 0,
+              gravity: 0,
+              layoutAnimation: false,
+              friction: 1,
+              initLayout: "none", // 不执行初始布局
+            }
+          : {
+              // 初始布局模式：使用力导向布局
+              repulsion: 800,
+              edgeLength: 120,
+              gravity: 0.05,
+              layoutAnimation: false,
+              friction: 0.6,
+              initLayout: "force",
+            },
         emphasis: { focus: "adjacency", lineStyle: { width: 3 } },
       },
     ],
   };
 
-  ins.setOption(option);
+  // 静默更新，不触发布局动画
+  ins.setOption(option, { notMerge: false, silent: preservePositions });
 
+  // 确保 roam 配置始终有效
+  // 使用定时器定期检查并修复 roam 配置（如果被重置）
+  let roamCheckInterval: number | null = null;
+  const ensureRoamEnabled = () => {
+    try {
+      const currentOption = ins.getOption() as any;
+      const series = currentOption.series?.[0];
+      if (series && (!series.roam || series.roam === false)) {
+        // roam 被禁用了，重新启用
+        ins.setOption(
+          {
+            series: [
+              {
+                ...series,
+                roam: true,
+              },
+            ],
+          },
+          { notMerge: false, silent: true }
+        );
+      }
+    } catch (e) {
+      console.warn("检查 roam 配置失败:", e);
+    }
+  };
+
+  // 每500ms检查一次 roam 配置
+  roamCheckInterval = window.setInterval(ensureRoamEnabled, 500);
+
+  // 在组件卸载时清除定时器
+  if (typeof window !== "undefined") {
+    window.addEventListener("beforeunload", () => {
+      if (roamCheckInterval) {
+        clearInterval(roamCheckInterval);
+      }
+    });
+  }
+
+  // 清除之前的事件监听器
   ins.off("click");
+
+  // 点击节点事件
   ins.on("click", (params) => {
     if (params.dataType === "node") {
       const node = params.data as Node;
       handleNodeClick(node);
       selected.value = node;
     }
-  });
-  ins.off("graphdragend"); // 防止重复绑定
-  ins.on("graphdragend", (params) => {
-    // params.data 是被拖动的节点
-    const updateList = ins.getOption().series[0].data.map((n: any) => ({
-      node_id: n.id,
-      x: n.x ?? 0, // 拖拽后 ECharts 会给每个节点加上 x/y
-      y: n.y ?? 0,
-    }));
-
-    // 可选：批量保存
-    persistLayout(updateList)
-      .then(() => message.success("位置已保存"))
-      .catch(() => message.error("保存失败"));
   });
   console.log("【节点 id 集合】", new Set(dto.nodes.map((n) => n.id)));
   console.log(
@@ -452,6 +578,7 @@ function handleNodeClick(node: Node) {
  * - 再次点击：隐藏其全部论文
  */
 function toggleAuthorPapers(authorId: string) {
+  // 不再保存节点位置，让力导向布局自动计算
   // 找到该作者在完整图中的所有 AUTHOR->PAPER 边
   const authoredEdges = fullGraph.value.edges.filter(
     (e) => e.relation === "AUTHORED" && (e.source === authorId || e.target === authorId)
@@ -504,7 +631,8 @@ function toggleAuthorPapers(authorId: string) {
     expandedAuthors.value.add(authorId);
   }
 
-  draw(visibleGraph.value);
+  // 使用 silent 模式更新，不触发布局重新计算
+  draw(visibleGraph.value, true);
 }
 
 /**
@@ -515,6 +643,7 @@ function toggleAuthorPapers(authorId: string) {
  *    - 若当前已隐藏：只恢复作者和 AFFILIATED_WITH 边，不自动展开论文
  */
 function toggleOrganizationSubtree(orgId: string) {
+  // 不再保存节点位置，让力导向布局自动计算
   // 找出该单位下的所有作者
   const orgEdges = fullGraph.value.edges.filter(
     (e) => e.relation === "AFFILIATED_WITH" && (e.source === orgId || e.target === orgId)
@@ -578,12 +707,13 @@ function toggleOrganizationSubtree(orgId: string) {
 
     visibleGraph.value = { nodes: newNodes, edges: newEdges };
 
-    // 清理这些作者的“已展开论文”状态
+    // 清理这些作者的"已展开论文"状态
     authorIds.forEach((id) => expandedAuthors.value.delete(id));
     hiddenOrgs.value.add(orgId);
   }
 
-  draw(visibleGraph.value);
+  // 使用 silent 模式更新，不触发布局重新计算
+  draw(visibleGraph.value, true);
 }
 
 function tagColor(type: string) {

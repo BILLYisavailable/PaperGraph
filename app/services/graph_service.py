@@ -92,4 +92,25 @@ class GraphService:
         except Exception as e:
             logger.error(f"保存布局失败: {e}")
             return False
+    
+    def clear_cache(self):
+        """清除所有图谱相关缓存"""
+        if not self.cache:
+            return
+        
+        try:
+            # 清除所有图谱相关的缓存键
+            patterns = ["graph:root:*", "graph:children:*", "graph:node:*"]
+            total_deleted = 0
+            
+            for pattern in patterns:
+                keys = self.cache.keys(pattern)
+                if keys:
+                    deleted = self.cache.delete(*keys)
+                    total_deleted += deleted if isinstance(deleted, int) else len(keys)
+            
+            if total_deleted > 0:
+                logger.info(f"清除了 {total_deleted} 个图谱缓存项")
+        except Exception as e:
+            logger.warning(f"清除图谱缓存失败: {e}")
 
