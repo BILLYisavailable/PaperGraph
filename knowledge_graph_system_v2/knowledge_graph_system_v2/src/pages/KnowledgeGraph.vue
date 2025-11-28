@@ -80,6 +80,60 @@
         <a-button size="small" shape="circle" @click="zoomGraph(0.8)">-</a-button>
       </div>
 
+      <!-- 方向控制按钮 -->
+      <div
+        style="
+          position: absolute;
+          right: 16px;
+          bottom: 80px;
+          z-index: 10;
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          grid-template-rows: repeat(3, 1fr);
+          gap: 4px;
+          width: 72px;
+          height: 72px;
+        "
+      >
+        <div></div>
+        <a-button
+          size="small"
+          shape="circle"
+          @click="moveGraph('up')"
+          style="grid-column: 2; grid-row: 1"
+        >
+          ↑
+        </a-button>
+        <div></div>
+        <a-button
+          size="small"
+          shape="circle"
+          @click="moveGraph('left')"
+          style="grid-column: 1; grid-row: 2"
+        >
+          ←
+        </a-button>
+        <div></div>
+        <a-button
+          size="small"
+          shape="circle"
+          @click="moveGraph('right')"
+          style="grid-column: 3; grid-row: 2"
+        >
+          →
+        </a-button>
+        <div></div>
+        <a-button
+          size="small"
+          shape="circle"
+          @click="moveGraph('down')"
+          style="grid-column: 2; grid-row: 3"
+        >
+          ↓
+        </a-button>
+        <div></div>
+      </div>
+
       <div ref="chartDom" style="width: 100%; height: 100%"></div>
     </a-layout-content>
 
@@ -214,6 +268,43 @@ function zoomGraph(factor: number) {
     });
   } catch (e) {
     console.warn("图谱缩放失败:", e);
+  }
+}
+
+/**
+ * 移动图谱（通过 ECharts graphRoam 动作）
+ * direction: "up" | "down" | "left" | "right"
+ */
+function moveGraph(direction: "up" | "down" | "left" | "right") {
+  if (!ins) return;
+  try {
+    const moveDistance = 50; // 每次移动的距离（像素）
+    let dx = 0;
+    let dy = 0;
+
+    switch (direction) {
+      case "up":
+        dy = moveDistance;
+        break;
+      case "down":
+        dy = -moveDistance;
+        break;
+      case "left":
+        dx = moveDistance;
+        break;
+      case "right":
+        dx = -moveDistance;
+        break;
+    }
+
+    // 使用 dispatchAction 触发 graphRoam 动作来移动图谱
+    ins.dispatchAction({
+      type: "graphRoam",
+      dx: dx,
+      dy: dy,
+    });
+  } catch (e) {
+    console.warn("图谱移动失败:", e);
   }
 }
 
@@ -380,15 +471,40 @@ function draw(dto: GraphDTO) {
         layout: "force",
         roam: true,
         draggable: true,
-        data: dto.nodes.map((n) => ({
-          id: n.id,
-          name: n.label,
-          symbolSize: n.type === "Organization" ? 28 : n.type === "Paper" ? 30 : 20,
-          itemStyle: {
-            color: n.type === "Organization" ? "#e60000" : color[n.type],
-          },
-          ...n,
-        })),
+        label: {
+          show: true,
+          position: "bottom",
+          offset: [0, 5],
+          fontSize: 12,
+          color: "#333",
+          fontWeight: "normal",
+        },
+        data: dto.nodes.map((n) => {
+          const isShowLabel = n.type === "Organization" || n.type === "Author";
+          const nodeData = {
+            ...n,
+            id: n.id,
+            name: n.label,
+            symbolSize: n.type === "Organization" ? 28 : n.type === "Paper" ? 30 : 20,
+            itemStyle: {
+              color: n.type === "Organization" ? "#e60000" : color[n.type],
+            },
+            label: isShowLabel
+              ? {
+                  show: true,
+                  position: "right",
+                  offset: [5, 0],
+                  fontSize: 12,
+                  color: "#333",
+                  fontWeight: "normal",
+                  formatter: "{b}",
+                }
+              : {
+                  show: false,
+                },
+          };
+          return nodeData;
+        }),
         links: dto.edges.map((e) => ({
           source: e.source,
           target: e.target,
