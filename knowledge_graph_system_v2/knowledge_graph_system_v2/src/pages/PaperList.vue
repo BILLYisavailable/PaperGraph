@@ -50,7 +50,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { onMounted } from "vue";
 import { get } from "@/api/http"; // 你的 axios 封装
 
 /* 表格列定义 */
@@ -113,8 +113,12 @@ async function loadData() {
     const papers: Paper[] = filtered.map((props: any) => ({
       id: props.id,
       title: props.title || props.name || "未知标题",
-      authors: props.authors || [],
-      orgs: props.orgs || [],
+      authors: props.authors
+        ? typeof props.authors === "string"
+          ? props.authors.split(";")
+          : props.authors
+        : [],
+      orgs: props.orgs ? (typeof props.orgs === "string" ? props.orgs.split(";") : props.orgs) : [],
       year: props.year || 0,
       url: props.url || (props.doi ? `https://doi.org/${props.doi}` : "#"),
     }));
@@ -131,5 +135,7 @@ async function loadData() {
 }
 </script>
 <script lang="ts">
+import { ref } from "vue";
 export const totalPaperCount = ref<number>(0);
+export default { name: "PaperList" };
 </script>
