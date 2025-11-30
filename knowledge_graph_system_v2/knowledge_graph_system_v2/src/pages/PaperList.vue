@@ -55,7 +55,8 @@
 <script setup lang="ts">
 import { onMounted } from "vue";
 import { get } from "@/api/http"; // 你的 axios 封装
-
+import { totalPaperCount } from "@/stores/totalPaperCount";
+import { ref } from "vue";
 /* 表格列定义 */
 const columns = [
   { title: "标题", dataIndex: "title", width: 280 },
@@ -142,7 +143,5 @@ async function loadData() {
 }
 </script>
 <script lang="ts">
-import { ref } from "vue";
-export const totalPaperCount = ref<number>(0);
 export default { name: "PaperList" };
 </script>

@@ -35,3 +35,5 @@ loguru==0.7.2
 # CORS
 fastapi-cors==0.0.6
 
+# load sample data
+faker==38.2.0

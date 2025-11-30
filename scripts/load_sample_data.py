@@ -6,78 +6,152 @@ from app.database import SessionLocal, neo4j_conn
 from app.models.mysql_models import PaperInfo, AuthorInfo, OrganizationInfo, PaperAuthorRelation
 from app.repositories.neo4j_dao import GraphDAO
 from loguru import logger
+import random
+from faker import Faker
+fake = Faker(["en_US", "zh_CN"])
 
 def load_sample_data():
     db = SessionLocal()
     
     try:
         logger.info("开始加载示例数据...")
-        
-        orgs = [
-            {"org_id": "org_001", "name": "清华大学", "country": "中国", "abbreviation": "THU", "rank_score": 98.5, "paper_count": 0},
-            {"org_id": "org_002", "name": "北京大学", "country": "中国", "abbreviation": "PKU", "rank_score": 97.8, "paper_count": 0},
-            {"org_id": "org_003", "name": "Stanford University", "country": "美国", "abbreviation": "Stanford", "rank_score": 99.2, "paper_count": 0}
+
+        # ================================
+        # 1. 组织（10 个）
+        # ================================
+        orgs = []
+        org_names = [
+            ("清华大学", "中国", "THU"),
+            ("北京大学", "中国", "PKU"),
+            ("浙江大学", "中国", "ZJU"),
+            ("中国科学院大学", "中国", "UCAS"),
+            ("复旦大学", "中国", "FDU"),
+            ("Stanford University", "USA", "Stanford"),
+            ("MIT", "USA", "MIT"),
+            ("Carnegie Mellon University", "USA", "CMU"),
+            ("University of Oxford", "UK", "Oxford"),
+            ("University of Tokyo", "Japan", "UTokyo")
         ]
-        
+
+        for i, (name, country, abbr) in enumerate(org_names, start=1):
+            orgs.append({
+                "org_id": f"org_{i:03d}",
+                "name": name,
+                "country": country,
+                "abbreviation": abbr,
+                "rank_score": round(random.uniform(80, 100), 2),
+                "paper_count": 0
+            })
+
         for org_data in orgs:
-            org = OrganizationInfo(**org_data)
-            db.merge(org)
-        
+            db.merge(OrganizationInfo(**org_data))
         db.commit()
         logger.info(f"✓ 创建了 {len(orgs)} 个单位")
-        
-        authors = [
-            {"author_id": "author_001", "name": "张三", "org_id": "org_001", "h_index": 25, "paper_count": 0, "orcid": "0000-0001-2345-6789", "email": "zhangsan@example.com"},
-            {"author_id": "author_002", "name": "李四", "org_id": "org_002", "h_index": 18, "paper_count": 0, "orcid": "0000-0002-3456-7890", "email": "lisi@example.com"},
-            {"author_id": "author_003", "name": "John Smith", "org_id": "org_003", "h_index": 42, "paper_count": 0, "orcid": "0000-0003-4567-8901", "email": "jsmith@stanford.edu"}
-        ]
-        
+
+        # ================================
+        # 2. 作者（30 个）
+        # ================================
+        authors = []
+        for i in range(1, 31):
+            authors.append({
+                "author_id": f"author_{i:03d}",
+                "name": fake.name(),
+                "org_id": f"org_{random.randint(1, 10):03d}",
+                "h_index": random.randint(5, 70),
+                "paper_count": 0,
+                "orcid": f"0000-000{random.randint(1000,9999)}-{random.randint(1000,9999)}",
+                "email": fake.email()
+            })
+
         for author_data in authors:
-            author = AuthorInfo(**author_data)
-            db.merge(author)
-        
+            db.merge(AuthorInfo(**author_data))
         db.commit()
         logger.info(f"✓ 创建了 {len(authors)} 个作者")
-        
-        papers = [
-            {"paper_id": "paper_001", "title": "Deep Learning for Knowledge Graph Construction", "abstract": "This paper presents a novel approach...", "year": 2023, "venue": "AAAI 2023", "doi": "10.1609/aaai.v37i1.12345", "keywords": "深度学习;知识图谱;神经网络", "url": "https://example.com/paper1", "citation_count": 25},
-            {"paper_id": "paper_002", "title": "Graph Neural Networks for Scientific Publication Analysis", "abstract": "We propose a graph neural network framework...", "year": 2023, "venue": "KDD 2023", "doi": "10.1145/3580305.3599123", "keywords": "图神经网络;论文分析;科学计量", "url": "https://example.com/paper2", "citation_count": 18},
-            {"paper_id": "paper_003", "title": "Knowledge Graph Embedding with Attention Mechanism", "abstract": "This work introduces an attention-based...", "year": 2022, "venue": "ACL 2022", "doi": "10.18653/v1/2022.acl-long.123", "keywords": "知识图谱嵌入;注意力机制;表示学习", "url": "https://example.com/paper3", "citation_count": 42}
-        ]
-        
+
+        # ================================
+        # 3. 论文（50 篇）
+        # ================================
+        venues = ["AAAI 2023", "ACL 2022", "KDD 2023", "ICML 2023", "NeurIPS 2022",
+                  "EMNLP 2023", "WWW 2023", "SIGIR 2022", "IJCAI 2023"]
+
+        keywords_pool = ["深度学习", "图神经网络", "知识图谱", "自然语言处理", "大模型",
+                         "机器翻译", "强化学习", "表示学习", "元学习"]
+
+        papers = []
+        for i in range(1, 51):
+            papers.append({
+                "paper_id": f"paper_{i:03d}",
+                "title": fake.sentence(nb_words=6),
+                "abstract": fake.text(max_nb_chars=150),
+                "year": random.randint(2018, 2024),
+                "venue": random.choice(venues),
+                "doi": f"10.1000/{fake.pyint()}",
+                "keywords": ";".join(random.sample(keywords_pool, k=3)),
+                "url": fake.url(),
+                "citation_count": random.randint(0, 200)
+            })
+
         for paper_data in papers:
-            paper = PaperInfo(**paper_data)
-            db.merge(paper)
-        
+            db.merge(PaperInfo(**paper_data))
         db.commit()
         logger.info(f"✓ 创建了 {len(papers)} 篇论文")
-        
-        relations = [
-            {"paper_id": "paper_001", "author_id": "author_001", "author_order": 1, "is_corresponding": 1},
-            {"paper_id": "paper_001", "author_id": "author_002", "author_order": 2, "is_corresponding": 0},
-            {"paper_id": "paper_002", "author_id": "author_003", "author_order": 1, "is_corresponding": 1},
-            {"paper_id": "paper_002", "author_id": "author_001", "author_order": 2, "is_corresponding": 0},
-            {"paper_id": "paper_003", "author_id": "author_002", "author_order": 1, "is_corresponding": 1},
-            {"paper_id": "paper_003", "author_id": "author_003", "author_order": 2, "is_corresponding": 0},
-        ]
-        
+
+        # ================================
+        # 4. 论文-作者关系（随机 120~150 个）
+        # ================================
+        relations = []
+        for p in papers:
+            paper_id = p["paper_id"]
+
+            # 每篇论文 2～4 个作者
+            num_auth = random.randint(2, 4)
+            chosen_authors = random.sample(authors, num_auth)
+
+            for order, auth in enumerate(chosen_authors, start=1):
+                relations.append({
+                    "paper_id": paper_id,
+                    "author_id": auth["author_id"],
+                    "author_order": order,
+                    "is_corresponding": 1 if order == 1 else 0
+                })
+
         for rel_data in relations:
-            rel = PaperAuthorRelation(**rel_data)
-            db.add(rel)
-        
+            db.add(PaperAuthorRelation(**rel_data))
         db.commit()
         logger.info(f"✓ 创建了 {len(relations)} 个论文-作者关系")
-        
+        # ================================
+        # 11/30 修正 paper_count
+        # ================================
+        for author in authors:
+            count = db.query(PaperAuthorRelation).filter(
+                PaperAuthorRelation.author_id == author["author_id"]
+            ).count()
+            db.query(AuthorInfo).filter(AuthorInfo.author_id == author["author_id"]).update(
+                {"paper_count": count}
+            )
+        for org in orgs:
+            count = db.query(PaperInfo)\
+                .join(PaperAuthorRelation, PaperInfo.paper_id == PaperAuthorRelation.paper_id)\
+                .join(AuthorInfo, PaperAuthorRelation.author_id == AuthorInfo.author_id)\
+                .filter(AuthorInfo.org_id == org["org_id"]).count()
+            db.query(OrganizationInfo).filter(OrganizationInfo.org_id == org["org_id"]).update(
+                {"paper_count": count}
+            )
+        db.commit()
+        logger.info("✓ 更新作者和机构的论文数量")
+        # ================================
+        # 5. 同步 Neo4j
+        # ================================
         logger.info("开始同步数据到 Neo4j...")
         sync_to_neo4j(db)
-        
+
         logger.info("✓ 示例数据加载完成！")
-        
+
     except Exception as e:
         logger.error(f"✗ 加载示例数据失败: {e}")
         db.rollback()
         raise
-    
+
     finally:
         db.close()
 
@@ -168,4 +242,3 @@ def main():
 
 if __name__ == "__main__":
     exit(main())
-

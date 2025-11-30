@@ -158,7 +158,7 @@
         <div v-if="!selected">请单击节点/边</div>
         <a-form v-else layout="vertical" size="small">
           <a-form-item label="名称">
-            <a-input :value="selected.label" readonly />
+            <a-input :value="selected.name" readonly />
           </a-form-item>
           <a-form-item label="类型">
             <a-tag :color="tagColor(selected.type)">
@@ -334,8 +334,15 @@ async function onFilter() {
       rawData.edges.filter((e: any) => e.type === "AFFILIATED_WITH")
     );
 
-    // 将后端通用节点结构映射为前端 Node 结构，并补充不同类型的字段
-    const processedNodes: Node[] = rawData.nodes.map((node) => {
+    // 将后端通用节点结构映射为前端 Node 结构（先做一次映射），然后再基于筛选器做过滤。
+    const yearStart = params.yearStart;
+    const yearEnd = params.yearEnd;
+    const orgFilters = params.orgs || [];
+    const authorFilter = (params.author || "").toString().trim().toLowerCase();
+
+    // 第一次映射：把 raw node 映射为前端 Node（但不立即按筛选器丢弃），同时时保留 raw node id
+    const rawMapped: { rawId: any; node: Node; raw: any }[] = [];
+    rawData.nodes.forEach((node: any) => {
       const props = node.properties || {};
       const type = node.label as "Paper" | "Author" | "Organization";
 
@@ -343,17 +350,14 @@ async function onFilter() {
         id: props.id || node.id,
         type,
         label: props.name || props.title || node.label,
-        // 通用属性直接铺开
         ...props,
       };
 
-      // 针对不同类型做字段映射，让右侧详情可以正确显示
       if (type === "Author") {
         base.hIndex = props.h_index ?? props.hIndex;
         base.orcid = props.orcid;
       } else if (type === "Organization") {
         base.country = props.country;
-        // rank_score -> rank
         const rankScore = props.rank_score ?? props.rank;
         base.rank = typeof rankScore === "number" ? rankScore : Number(rankScore || 0);
       } else if (type === "Paper") {
@@ -363,7 +367,79 @@ async function onFilter() {
         base.doi = props.doi;
       }
 
-      return base;
+      rawMapped.push({ rawId: node.id, node: base, raw: node });
+    });
+
+    // 如果有 org 过滤，先收集被选中的组织的 id（基于组织名称匹配 orgFilters）
+    // 我们同时收集它们的 rawId（raw node id），以便用来匹配后端返回的边
+    const allowedOrgIds = new Set<string>();
+    const allowedOrgRawIds = new Set<string>();
+    if (Array.isArray(orgFilters) && orgFilters.length > 0) {
+      rawMapped.forEach((m) => {
+        if (m.node.type === "Organization") {
+          const name = (m.node.label || "").toString();
+          if (orgFilters.includes(name)) {
+            allowedOrgIds.add(String(m.node.id));
+            allowedOrgRawIds.add(String(m.rawId));
+          }
+        }
+      });
+    }
+
+    // 第二次过滤：根据 year/org/author 筛选节点
+    const processedNodes: Node[] = [];
+    const allowedRawIds = new Set<string>();
+    // 如果通过 org 选择，需要把通过 AFFILIATED_WITH 边连接到被选组织的作者也加入（作者可能没有 org_id 字段）
+    const affiliatedAuthorRawIds = new Set<string>();
+    if (allowedOrgRawIds.size > 0) {
+      rawData.edges.forEach((edge: any) => {
+        if (edge.type === "AFFILIATED_WITH") {
+          const s = String(edge.source);
+          const t = String(edge.target);
+          if (allowedOrgRawIds.has(s)) {
+            affiliatedAuthorRawIds.add(t);
+          } else if (allowedOrgRawIds.has(t)) {
+            affiliatedAuthorRawIds.add(s);
+          }
+        }
+      });
+    }
+
+    rawMapped.forEach((m) => {
+      const base = m.node;
+      const raw = m.raw;
+      const type = base.type;
+
+      let include = true;
+      if (type === "Paper") {
+        const y = Number(base.year || 0);
+        include = !Number.isNaN(y) && y >= yearStart && y <= yearEnd;
+      } else if (type === "Organization") {
+        if (Array.isArray(orgFilters) && orgFilters.length > 0) {
+          const name = (base.label || "").toString();
+          include = orgFilters.includes(name);
+        }
+      } else if (type === "Author") {
+        if (authorFilter) {
+          const name = (base.label || "").toString().toLowerCase();
+          include = name.includes(authorFilter);
+        }
+        // 如果选择了机构过滤，则只保留：
+        //  - 作者的 org_id 在被选组织 id 列表中，或
+        //  - 作者通过后端返回的 AFFILIATED_WITH 边与被选组织相连（在 affiliatedAuthorRawIds 中）
+        if (include && allowedOrgIds.size > 0) {
+          const orgId = (base.org_id as any) || (base.orgId as any) || raw.properties?.org_id;
+          const rawIdStr = String(m.rawId);
+          const byProp = orgId != null && allowedOrgIds.has(String(orgId));
+          const byEdge = affiliatedAuthorRawIds.has(rawIdStr);
+          include = byProp || byEdge;
+        }
+      }
+
+      if (include) {
+        processedNodes.push(base);
+        allowedRawIds.add(String(m.rawId));
+      }
     });
 
     // 根据组织节点动态生成筛选下拉选项，保持前后端一致
@@ -372,8 +448,17 @@ async function onFilter() {
     );
     orgOptions.value = orgNames.map((name) => ({ label: name, value: name }));
 
+    // 只保留端点都在 processedNodes 中的边。注意 rawData.edges 的 source/target 可能是原始 node.id（node.id），
+    // 因此我们同时维护 allowedRawIds（raw node.id）和 allowedProcessedIds（映射后用作前端 id）进行判断。
+    const allowedProcessedIds = new Set(processedNodes.map((n) => String(n.id)));
     const edgeMap = new Map<string, Edge>();
-    rawData.edges.forEach((edge) => {
+    rawData.edges.forEach((edge: any) => {
+      const srcOk =
+        allowedRawIds.has(String(edge.source)) || allowedProcessedIds.has(String(edge.source));
+      const tgtOk =
+        allowedRawIds.has(String(edge.target)) || allowedProcessedIds.has(String(edge.target));
+      if (!srcOk || !tgtOk) return; // 跳过任何一端不在过滤后的节点集内的边
+
       const key = `${edge.source}-${edge.target}-${edge.type}`;
       if (!edgeMap.has(key)) {
         edgeMap.set(key, {
@@ -389,14 +474,14 @@ async function onFilter() {
     // ===== 在前端补充单位-作者关系边（AFFILIATED_WITH） =====
     // 某些情况下后端未返回 AFFILIATED_WITH 边，但 Author 节点上有 org_id 属性
     const orgIdSet = new Set(
-      processedNodes.filter((n) => n.type === "Organization").map((n) => n.id)
+      processedNodes.filter((n) => n.type === "Organization").map((n) => String(n.id))
     );
     const orgAuthorEdges: Edge[] = [];
     processedNodes
       .filter((n) => n.type === "Author")
       .forEach((author: any) => {
         const orgId = author.org_id as string | undefined;
-        if (orgId && orgIdSet.has(orgId)) {
+        if (orgId && orgIdSet.has(String(orgId))) {
           const key = `${author.id}-${orgId}-AFFILIATED_WITH`;
           if (!edgeMap.has(key)) {
             const e: Edge = {
@@ -420,10 +505,10 @@ async function onFilter() {
 
     // 初始展示：只显示单位 + 作者，以及它们之间的连线
     const initialNodes = processedNodes.filter(
-      (n) => n.type === "Organization" || n.type === "Author"
+      (n) => n.type === "Organization" || n.type === "Author" || n.type === "Paper"
     );
     // 单位-作者边：关系类型为 AFFILIATED_WITH（包括前端补充的那部分）
-    const initialEdges = fullGraph.value.edges.filter((e) => e.relation === "AFFILIATED_WITH");
+    const initialEdges = fullGraph.value.edges.filter((e) => e.relation === "AFFILIATED_WITH" || e.relation === "AUTHORED");
 
     visibleGraph.value = {
       nodes: initialNodes,
