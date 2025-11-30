@@ -14,7 +14,7 @@
 
 <script setup lang="ts">
 import GlobalHeader from "@/components/GlobalHeader.vue";
-import { totalPaperCount } from "@/pages/PaperList.vue";
+import { totalPaperCount } from "@/stores/totalPaperCount";
 
 // 测试代码
 // import { getCurrentUser } from "@/api/user";
