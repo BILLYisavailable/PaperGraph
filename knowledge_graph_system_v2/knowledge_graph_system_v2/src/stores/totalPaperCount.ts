@@ -5,7 +5,7 @@ export const totalPaperCount = ref<number>(0);
 
 export async function loadTotalPaperCount() {
   try {
-    const res: any = await get("/graph/root", { limit: 200 });
+    const res: any = await get("/graph/root", { limit: 1000 });
     const allPapers = (res.nodes || [])
       .filter((n: any) => n.label === "Paper" || n.type === "Paper")
       .map((n: any) => n.properties);

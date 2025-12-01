@@ -47,8 +47,8 @@ if errorlevel 1 (
 
 REM 步骤2: 检查并启动Redis/Memurai服务
 echo ====================================
-echo 步骤 2/4: 检查Redis服务
-echo Step 2/4: Checking Redis service
+echo 步骤 2/5: 检查Redis服务
+echo Step 2/5: Checking Redis service
 echo ====================================
 echo.
 sc query Memurai >nul 2>&1
@@ -64,10 +64,31 @@ if errorlevel 1 (
     echo.
 )
 
-REM 步骤3: 启动后端服务器（在新窗口中）
+REM 步骤3: 初始化数据库并加载数据
 echo ====================================
-echo 步骤 3/4: 启动后端服务
-echo Step 3/4: Starting backend services
+echo 步骤 3/5: 初始化数据库并加载数据
+echo Step 3/5: Initialize database and load data
+echo ====================================
+echo.
+echo [INFO] 正在初始化数据库...
+echo [INFO] Initializing database...
+python scripts\init_database.py
+if errorlevel 1 (
+    echo [ERROR] 数据库初始化失败
+    echo [ERROR] Database initialization failed
+    pause
+    exit /b 1
+)
+echo.
+
+echo [OK] 数据库初始化完成
+echo [OK] Database initialization completed
+echo.
+
+REM 步骤4: 启动后端服务器（在新窗口中）
+echo ====================================
+echo 步骤 4/5: 启动后端服务
+echo Step 4/5: Starting backend services
 echo ====================================
 echo.
 
@@ -87,10 +108,10 @@ start "PaperGraph - Celery Worker" cmd /k "cd /d %~dp0 && call venv\Scripts\acti
 REM 等待一下确保Worker启动
 timeout /t 2 /nobreak >nul
 
-REM 步骤4: 启动前端服务（在新窗口中）
+REM 步骤5: 启动前端服务（在新窗口中）
 echo ====================================
-echo 步骤 4/4: 启动前端服务
-echo Step 4/4: Starting frontend service
+echo 步骤 5/5: 启动前端服务
+echo Step 5/5: Starting frontend service
 echo ====================================
 echo.
 
@@ -154,4 +175,3 @@ echo.
 echo 按任意键关闭此窗口...
 echo Press any key to close this window...
 pause >nul
-

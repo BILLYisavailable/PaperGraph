@@ -35,11 +35,10 @@ def fetch_author(author_id):
 
 def clean_author(raw):
     author_id = raw["id"].split("/")[-1]
-    org = raw.get("last_known_institution", {}) 
     return {
         "author_id": author_id,
         "name": raw.get("display_name", ""),
-        "org_id": org.get("id", "").split("/")[-1] if org else None,
+        "org_id": None,
         "h_index": raw.get("h_index", 0),
         "paper_count": raw.get("works_count", 0),
         "orcid": raw.get("orcid", ""),
@@ -91,10 +90,13 @@ def crawl(keyword):
             if author_id not in authors:
                 raw_author = fetch_author(author_id)
                 authors[author_id] = clean_author(raw_author)
-                org_id = authors[author_id]["org_id"]
-                if org_id and org_id not in orgs:
-                    raw_org = fetch_org(org_id)
-                    orgs[org_id] = clean_org(raw_org)
+                author_orgs = auth.get("institutions", None)
+                if author_orgs:
+                    org_id = author_orgs[0]["id"].split("/")[-1]
+                    authors[author_id]["org_id"] = org_id
+                    if org_id not in orgs:
+                        raw_org = fetch_org(org_id)
+                        orgs[org_id] = clean_org(raw_org)
 
         paper_author_rel = extract_paper_author_relations(p)
         paper_author_rels.extend(paper_author_rel)
@@ -103,48 +105,55 @@ def crawl(keyword):
 
 def load_data(papers, authors, orgs, paper_authors):
     db = SessionLocal()
-    
     try:
-        logger.info("开始加载数据...")
-        
         for org_data in orgs:
-            org = OrganizationInfo(**org_data)
-            db.merge(org)
-        
+            db.merge(OrganizationInfo(**org_data))
         db.commit()
         logger.info(f"✓ 创建了 {len(orgs)} 个单位")
-        
+
         for author_data in authors:
-            author = AuthorInfo(**author_data)
-            db.merge(author)
-        
+            db.merge(AuthorInfo(**author_data))
         db.commit()
         logger.info(f"✓ 创建了 {len(authors)} 个作者")
-        
+
         for paper_data in papers:
-            paper = PaperInfo(**paper_data)
-            db.merge(paper)
-        
+            db.merge(PaperInfo(**paper_data))
         db.commit()
         logger.info(f"✓ 创建了 {len(papers)} 篇论文")
-        
+
         for rel_data in paper_authors:
-            rel = PaperAuthorRelation(**rel_data)
-            db.add(rel)
-        
+            db.add(PaperAuthorRelation(**rel_data))
         db.commit()
         logger.info(f"✓ 创建了 {len(paper_authors)} 个论文-作者关系")
-        
+
+        for author in authors:
+            count = db.query(PaperAuthorRelation).filter(
+                PaperAuthorRelation.author_id == author["author_id"]
+            ).count()
+            db.query(AuthorInfo).filter(AuthorInfo.author_id == author["author_id"]).update(
+                {"paper_count": count}
+            )
+        for org in orgs:
+            count = db.query(PaperInfo)\
+                .join(PaperAuthorRelation, PaperInfo.paper_id == PaperAuthorRelation.paper_id)\
+                .join(AuthorInfo, PaperAuthorRelation.author_id == AuthorInfo.author_id)\
+                .filter(AuthorInfo.org_id == org["org_id"]).count()
+            db.query(OrganizationInfo).filter(OrganizationInfo.org_id == org["org_id"]).update(
+                {"paper_count": count}
+            )
+        db.commit()
+        logger.info("✓ 更新作者和机构的论文数量")
+
         logger.info("开始同步数据到 Neo4j...")
         sync_to_neo4j(db)
-        
-        logger.info("✓ 数据加载完成！")
-        
+
+        logger.info("✓ 示例数据加载完成！")
+
     except Exception as e:
-        logger.error(f"✗ 加载数据失败: {e}")
+        logger.error(f"✗ 加载示例数据失败: {e}")
         db.rollback()
         raise
-    
+
     finally:
         db.close()
 
@@ -201,8 +210,8 @@ def sync_to_neo4j(db):
                 paper_node_map[paper.paper_id] = node_id
             logger.info(f"✓ 同步了 {len(papers)} 个论文节点")
             
-            paper_author_rels = db.query(PaperAuthorRelation).all()
-            for rel in paper_author_rels:
+            relations = db.query(PaperAuthorRelation).all()
+            for rel in relations:
                 if rel.author_id in author_node_map and rel.paper_id in paper_node_map:
                     dao.create_relationship(
                         author_node_map[rel.author_id],
@@ -210,8 +219,8 @@ def sync_to_neo4j(db):
                         "AUTHORED",
                         {"order": rel.author_order, "is_corresponding": rel.is_corresponding}
                     )
-            logger.info(f"✓ 同步了 {len(paper_author_rels)} 个作者-论文关系")
-
+            logger.info(f"✓ 同步了 {len(relations)} 个作者-论文关系")
+            
             session.close()
         
     except Exception as e:
@@ -232,7 +241,15 @@ def main(keyword):
         print("URL: ", p["url"])
         print("Citation count: ", p["citation_count"])
         print("==============\n")
-        logger.info("=" * 60)
+    for a in authors:
+        print("==============")
+        print("Author ID: ", a["author_id"])
+        print("Name: ", a["name"])
+        print("Organization ID: ", a["org_id"])
+        print("Paper Count: ", a["paper_count"])
+        print("ORCID: ", a["orcid"])
+        print("==============\n")
+    logger.info("=" * 60)
     logger.info("论文知识图谱系统 - 加载数据")
     logger.info("=" * 60)
     
