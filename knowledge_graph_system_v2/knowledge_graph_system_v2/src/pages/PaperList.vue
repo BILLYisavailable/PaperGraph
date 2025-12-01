@@ -97,7 +97,7 @@ function handleTableChange(pager: any) {
 async function loadData() {
   loading.value = true;
   try {
-    const res = await get("/graph/root", { limit: 200 });
+    const res = await get("/graph/root", { limit: 1000 });
 
     /* ===== ① 先统计总数 ===== */
     const allPapers = res.nodes
