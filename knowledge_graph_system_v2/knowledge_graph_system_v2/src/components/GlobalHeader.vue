@@ -15,28 +15,15 @@
           @click="doMenuClick"
         />
       </a-col>
-      <a-col flex="80px">
-        <div class="user-login-status">
-          <div v-if="loginUserStore.loginUser.id">
-            {{ loginUserStore.loginUser.username ?? "无名" }}
-          </div>
-          <div v-else>
-            <a-button type="primary" href="/user/login">登录</a-button>
-          </div>
-        </div>
-      </a-col>
     </a-row>
   </div>
 </template>
 
 <script lang="ts" setup>
 import { h, ref } from "vue";
-import { CrownOutlined, HomeOutlined } from "@ant-design/icons-vue";
+import { HomeOutlined } from "@ant-design/icons-vue";
 import { MenuProps } from "ant-design-vue";
 import { useRouter } from "vue-router";
-import { useLoginUserStore } from "@/store/useLoginUserStore";
-
-const loginUserStore = useLoginUserStore();
 
 const router = useRouter();
 // 点击菜单后的路由跳转事件
@@ -73,12 +60,6 @@ const items = ref<MenuProps["items"]>([
     key: "/data-stats",
     label: "数据统计",
     title: "数据统计",
-  },
-  {
-    key: "/admin/userManage",
-    icon: () => h(CrownOutlined),
-    label: "用户管理",
-    title: "用户管理",
   },
 ]);
 </script>

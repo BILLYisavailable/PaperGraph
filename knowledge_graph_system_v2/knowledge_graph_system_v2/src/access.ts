@@ -1,28 +1,10 @@
 import router from "@/router";
-import { useLoginUserStore } from "@/store/useLoginUserStore";
 import { message } from "ant-design-vue";
-import axios from "axios";
 
-// 添加process的类型声明
-declare const process: {
-  env: {
-    NODE_ENV: string;
-    BASE_URL?: string;
-  };
-};
 /**
  * 全局权限校验
  */
 router.beforeEach(async (to, from, next) => {
-  const loginUserStore = useLoginUserStore();
-  const loginUser = loginUserStore.loginUser;
-  const toUrl = to.fullPath;
-  if (toUrl.startsWith("/admin")) {
-    if (!loginUser || loginUser.userRole !== 1) {
-      message.error("没有权限");
-      next(`/user/login?redirect=${to.fullPath}`);
-      return;
-    }
-  }
+  // 简单的路由校验，不涉及用户权限
   next();
 });

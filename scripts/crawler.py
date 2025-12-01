@@ -42,9 +42,8 @@ def clean_author(raw):
         "h_index": raw.get("h_index", 0),
         "paper_count": raw.get("works_count", 0),
         "orcid": raw.get("orcid", ""),
-        "email": ""
+        "email": ""  # OpenAlex 没有邮箱字段，可用其他 API补充
     }
-
 
 def fetch_org(org_id):
     url = f"https://api.openalex.org/institutions/{org_id}"
@@ -55,7 +54,7 @@ def clean_org(raw):
         "org_id": raw["id"].split("/")[-1],
         "name": raw.get("display_name", ""),
         "country": raw.get("country_code", ""),
-        "abbreviation": (raw.get("display_name_acronyms") or [""])[0],
+        "abbreviation": raw.get("display_name_acronyms", [""])[0],
         "rank_score": raw.get("x_concepts", [{}])[0].get("score", 0),
         "paper_count": raw.get("works_count", 0)
     }

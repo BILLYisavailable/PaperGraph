@@ -40,9 +40,9 @@ if not exist ".env" (
 )
 
 echo ====================================
-echo Environment setup succeed  
+echo Environment setup succeed£¡
 echo ====================================
-echo Next  
+echo Next£º
 echo 1. Configure .env file
 echo 2. Run python scripts/init_database.py to initialize database
 echo 3. Run python scripts/load_sample_data.py to load sample data
