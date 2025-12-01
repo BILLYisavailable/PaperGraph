@@ -508,7 +508,9 @@ async function onFilter() {
       (n) => n.type === "Organization" || n.type === "Author" || n.type === "Paper"
     );
     // 单位-作者边：关系类型为 AFFILIATED_WITH（包括前端补充的那部分）
-    const initialEdges = fullGraph.value.edges.filter((e) => e.relation === "AFFILIATED_WITH" || e.relation === "AUTHORED");
+    const initialEdges = fullGraph.value.edges.filter(
+      (e) => e.relation === "AFFILIATED_WITH" || e.relation === "AUTHORED"
+    );
 
     visibleGraph.value = {
       nodes: initialNodes,
