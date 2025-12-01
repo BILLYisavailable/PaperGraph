@@ -33,7 +33,7 @@ def add_citation_relationships():
     with driver.session() as session:
         # 1. 获取所有论文节点
         print("正在查询论文节点...")
-        result = session.run("MATCH (p:Paper) RETURN p.id AS paper_id, p.title AS title LIMIT 20")
+        result = session.run("MATCH (p:Paper) RETURN p.id AS paper_id, p.title AS title LIMIT 30")
         papers = [{"id": record["paper_id"], "title": record["title"]} for record in result]
 
         if len(papers) < 2:

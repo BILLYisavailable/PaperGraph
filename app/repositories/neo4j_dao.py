@@ -53,8 +53,8 @@ class GraphDAO:
         nodes: List[Dict] = []
         edges: List[Dict] = []
         node_ids = set()
-        logger.info("[参数] {}", params)
-        logger.info("[Cypher 参数] yearStart={} yearEnd={} orgs={} author={}", year_start, year_end, orgs, author)
+        #logger.info("[参数] {}", params)
+        #logger.info("[Cypher 参数] yearStart={} yearEnd={} orgs={} author={}", year_start, year_end, orgs, author)
         with self.driver.session() as session:
             #result = session.run(cypher, limit=limit)
             result = session.run(cypher,
@@ -145,7 +145,7 @@ class GraphDAO:
                             }
                         })
                         node_ids.add(cited_paper_id)
-        logger.info("[返回] 节点数={} 边数={}", len(nodes), len(edges))
+        #logger.info("[返回] 节点数={} 边数={}", len(nodes), len(edges))
         return nodes, edges
 
     # ---------- 子节点 ----------

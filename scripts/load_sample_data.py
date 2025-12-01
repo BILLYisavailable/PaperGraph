@@ -78,12 +78,60 @@ def load_sample_data():
                          "机器翻译", "强化学习", "表示学习", "元学习"]
 
         papers = []
+        # 使用更有意义的标题模板
+        title_templates = [
+            "[{abbr}] Sample Paper {num} on {topic} and {topic2}",
+            "Research on {topic} Applications in {field} - {abbr} {num}",
+            "{topic}: A Novel Approach by {abbr} Research Team ({year})",
+            "{abbr} {num}: {topic} and Its Implications for {field}",
+            "Advances in {topic} - {abbr} Study {num}",
+            "{topic} in {field}: {abbr} Research Findings ({year})"
+        ]
+
+        # 更专业的话题和领域
+        topics = [
+            "Knowledge Graphs", "Machine Learning", "Deep Learning",
+            "Natural Language Processing", "Computer Vision",
+            "Reinforcement Learning", "Graph Neural Networks",
+            "Large Language Models", "Data Mining", "Information Retrieval"
+        ]
+
+        fields = [
+            "Artificial Intelligence", "Data Science", "Computer Science",
+            "Bioinformatics", "Healthcare", "Finance", "Education",
+            "Social Networks", "Recommendation Systems"
+        ]
+
         for i in range(1, 51):
+            # 随机选择机构缩写
+            org_abbr = random.choice([abbr for _, _, abbr in org_names])
+            # 随机选择话题和领域
+            topic = random.choice(topics)
+            topic2 = random.choice([t for t in topics if t != topic])
+            field = random.choice(fields)
+            year = random.randint(2018, 2024)
+
+            # 选择标题模板并填充
+            template = random.choice(title_templates)
+            title = template.format(
+                abbr=org_abbr,
+                num=i,
+                topic=topic,
+                topic2=topic2,
+                field=field,
+                year=year
+            )
+
+            # 生成更相关的摘要
+            abstract_start = f"This paper presents a novel approach to {topic} in the field of {field}. "
+            abstract_middle = fake.text(max_nb_chars=100)
+            abstract = abstract_start + abstract_middle
+
             papers.append({
                 "paper_id": f"paper_{i:03d}",
-                "title": fake.sentence(nb_words=6),
-                "abstract": fake.text(max_nb_chars=150),
-                "year": random.randint(2018, 2024),
+                "title": title,
+                "abstract": abstract,
+                "year": year,
                 "venue": random.choice(venues),
                 "doi": f"10.1000/{fake.pyint()}",
                 "keywords": ";".join(random.sample(keywords_pool, k=3)),
