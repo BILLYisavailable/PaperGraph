@@ -80,17 +80,9 @@ if errorlevel 1 (
     exit /b 1
 )
 echo.
-echo [INFO] 正在加载示例数据（10所高校 × 10名作者 × 10篇文章 = 1000篇文章）...
-echo [INFO] Loading sample data (10 universities × 10 authors × 10 papers = 1000 papers)...
-python scripts\load_sample_data.py
-if errorlevel 1 (
-    echo [ERROR] 数据加载失败
-    echo [ERROR] Data loading failed
-    pause
-    exit /b 1
-)
-echo [OK] 数据库初始化和数据加载完成
-echo [OK] Database initialization and data loading completed
+
+echo [OK] 数据库初始化完成
+echo [OK] Database initialization completed
 echo.
 
 REM 步骤4: 启动后端服务器（在新窗口中）

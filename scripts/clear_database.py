@@ -11,6 +11,7 @@ from app.models import mysql_models  # noqa: F401
 def init_mysql():
     logger.info("开始初始化 MySQL 数据库...")
     try:
+        Base.metadata.drop_all(bind=engine)
         Base.metadata.create_all(bind=engine)
         logger.info("✓ MySQL 表创建成功")
         
@@ -29,6 +30,7 @@ def init_neo4j():
         driver = neo4j_conn.connect()
         
         with driver.session() as session:
+            session.run("MATCH (n) DETACH DELETE n")
             constraints = [
                 "CREATE CONSTRAINT paper_id IF NOT EXISTS FOR (p:Paper) REQUIRE p.id IS UNIQUE",
                 "CREATE CONSTRAINT author_id IF NOT EXISTS FOR (a:Author) REQUIRE a.id IS UNIQUE",
@@ -85,6 +87,7 @@ def init_redis():
                 db=settings.REDIS_DB,
                 decode_responses=True
             )
+        client.flushdb()
         if client.ping():
             logger.info("✓ Redis 连接成功")
         return True
