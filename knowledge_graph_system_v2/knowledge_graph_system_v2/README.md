@@ -10,27 +10,30 @@
 
 ⭐️ 更多鱼皮带做的原创项目教程请见《编程导航》：https://codefather.cn ，已经有十多套，还在持续更新中，欢迎学习，学会做项目，提升求职竞争力！
 
-
-
 ## Project setup
+
 ```
 npm install
 ```
 
 ### Compiles and hot-reloads for development
+
 ```
 npm run serve
 ```
 
 ### Compiles and minifies for production
+
 ```
 npm run build
 ```
 
 ### Lints and fixes files
+
 ```
 npm run lint
 ```
 
 ### Customize configuration
+
 See [Configuration Reference](https://cli.vuejs.org/config/).

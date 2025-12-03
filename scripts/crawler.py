@@ -3,11 +3,11 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.database import SessionLocal, neo4j_conn
-from app.models.mysql_models import PaperInfo, AuthorInfo, OrganizationInfo, PaperAuthorRelation, AuthorOrganizationRelation
+from app.models.mysql_models import PaperInfo, AuthorInfo, OrganizationInfo, PaperAuthorRelation, AuthorOrganizationRelation, PaperCitationRelation
 from app.repositories.neo4j_dao import GraphDAO
 from loguru import logger
 
-def fetch_papers_by_keyword(keyword, per_page=20):
+def fetch_papers_by_keyword(keyword, per_page=50):
     url = "https://api.openalex.org/works"
     params = {
         "filter": f"title.search:{keyword}",
@@ -76,12 +76,35 @@ def extract_paper_author_relations(paper_raw):
         relations.append(relation)
     return relations
 
+
+def extract_paper_citation_relations(paper_raw):
+    """从 OpenAlex 返回的数据中提取引用关系：
+    返回列表，包含 dict: {"citing_paper_id", "cited_paper_id", "weight"}
+    """
+    citing_id = paper_raw["id"].split("/")[-1]
+    relations = []
+    for ref in paper_raw.get("referenced_works", []) or []:
+        # ref 可能是完整 URL 或 OpenAlex id
+        try:
+            cited_id = ref.split("/")[-1]
+        except Exception:
+            continue
+        if not cited_id or cited_id == citing_id:
+            continue
+        relations.append({
+            "citing_paper_id": citing_id,
+            "cited_paper_id": cited_id,
+            "weight": 1.0
+        })
+    return relations
+
 def crawl(keyword):
     papers_raw = fetch_papers_by_keyword(keyword)
     papers = []
     authors = {}
     orgs = {}
     paper_author_rels = []
+    paper_citation_rels = []
     author_org_rels = []
     for p in papers_raw:
         print("paper raw: ",p)
@@ -102,10 +125,12 @@ def crawl(keyword):
 
         paper_author_rel = extract_paper_author_relations(p)
         paper_author_rels.extend(paper_author_rel)
+        # extract citations from the raw paper data
+        paper_citation_rels.extend(extract_paper_citation_relations(p))
 
-    return papers, list(authors.values()), list(orgs.values()), paper_author_rels
+    return papers, list(authors.values()), list(orgs.values()), paper_author_rels, paper_citation_rels
 
-def load_data(papers, authors, orgs, paper_authors):
+def load_data(papers, authors, orgs, paper_authors, paper_citations):
     db = SessionLocal()
     try:
         for org_data in orgs:
@@ -127,6 +152,33 @@ def load_data(papers, authors, orgs, paper_authors):
             db.add(PaperAuthorRelation(**rel_data))
         db.commit()
         logger.info(f"✓ 创建了 {len(paper_authors)} 个论文-作者关系")
+
+        # 插入论文引用关系（避免重复）
+        # 由于表上存在外键约束，只有当引用双方都已存在于 paper_info 中时才能插入
+        existing_paper_ids = {p.paper_id for p in db.query(PaperInfo).all()}
+        inserted = 0
+        skipped = 0
+        for rel_data in paper_citations:
+            citing = rel_data.get("citing_paper_id")
+            cited = rel_data.get("cited_paper_id")
+            if citing not in existing_paper_ids or cited not in existing_paper_ids:
+                skipped += 1
+                continue
+            exists = db.query(PaperCitationRelation).filter(
+                PaperCitationRelation.citing_paper_id == citing,
+                PaperCitationRelation.cited_paper_id == cited
+            ).first()
+            if not exists:
+                # weight 字段可选，默认存 1.0
+                db.add(PaperCitationRelation(
+                    citing_paper_id=citing,
+                    cited_paper_id=cited,
+                    weight=rel_data.get("weight", 1.0)
+                ))
+                inserted += 1
+        if inserted:
+            db.commit()
+        logger.info(f"✓ 创建了 {inserted} 个论文引用关系，跳过了 {skipped} 个因论文不存在的引用")
 
         for author in authors:
             count = db.query(PaperAuthorRelation).filter(
@@ -222,6 +274,20 @@ def sync_to_neo4j(db):
                         {"order": rel.author_order, "is_corresponding": rel.is_corresponding}
                     )
             logger.info(f"✓ 同步了 {len(relations)} 个作者-论文关系")
+
+            # 同步论文引用关系到 Neo4j：CITES
+            citation_relations = db.query(PaperCitationRelation).all()
+            inserted_cites = 0
+            for crel in citation_relations:
+                if crel.citing_paper_id in paper_node_map and crel.cited_paper_id in paper_node_map:
+                    dao.create_relationship(
+                        paper_node_map[crel.citing_paper_id],
+                        paper_node_map[crel.cited_paper_id],
+                        "CITES",
+                        {"weight": float(crel.weight) if crel.weight is not None else 1.0}
+                    )
+                    inserted_cites += 1
+            logger.info(f"✓ 同步了 {inserted_cites} 个论文引用关系")
             
             session.close()
         
@@ -231,7 +297,7 @@ def sync_to_neo4j(db):
 
 def main(keyword):
     print(f"查找关键词：{keyword} ...\n")
-    papers, authors, orgs, paper_author_rels = crawl(keyword)
+    papers, authors, orgs, paper_author_rels, paper_citation_rels = crawl(keyword)
     print(f"获取了 {len(papers)} 篇论文数据: \n")
     for p in papers:
         print("==============")
@@ -256,7 +322,7 @@ def main(keyword):
     logger.info("=" * 60)
     
     try:
-        load_data(papers, authors, orgs, paper_author_rels)
+        load_data(papers, authors, orgs, paper_author_rels, paper_citation_rels)
         logger.info("=" * 60)
         logger.info("数据加载成功！")
         logger.info("=" * 60)

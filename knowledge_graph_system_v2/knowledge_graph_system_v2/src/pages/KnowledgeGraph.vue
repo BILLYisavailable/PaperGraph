@@ -76,6 +76,9 @@
           gap: 8px;
         "
       >
+        <a-button size="small" shape="circle" @click="toggleLabels">{{
+          showLabels ? "关闭名称" : "显示名称"
+        }}</a-button>
         <a-button size="small" shape="circle" @click="zoomGraph(1.2)">+</a-button>
         <a-button size="small" shape="circle" @click="zoomGraph(0.8)">-</a-button>
       </div>
@@ -102,7 +105,7 @@
         style="
           position: absolute;
           right: 16px;
-          bottom: 80px;
+          bottom: 120px;
           z-index: 10;
           display: grid;
           grid-template-columns: repeat(3, 1fr);
@@ -231,7 +234,7 @@ import { post as apiPost, get as apiGet } from "@/api/http";
 import axios from "axios";
 /* 筛选状态 */
 const filter = ref({
-  year: [2020, 2025],
+  year: [1980, 2025],
   orgs: [] as string[],
   author: "",
 });
@@ -255,6 +258,8 @@ const hiddenOrgs = ref<Set<string>>(new Set());
 /* 图谱实例 */
 const chartDom = ref<HTMLDivElement>();
 let ins: echarts.ECharts;
+// 控制是否显示节点名称（标签）
+const showLabels = ref(true);
 
 const lineStyleMap: Record<string, any> = {
   // 作者-论文边：绿色
@@ -275,7 +280,7 @@ function zoomGraph(factor: number) {
     const option = ins.getOption() as any;
     const series = option.series?.[0] || {};
     const currentZoom = typeof series.zoom === "number" ? series.zoom : 1;
-    const newZoom = Math.max(0.2, Math.min(5, currentZoom * factor));
+    const newZoom = Math.max(0.1, Math.min(5, currentZoom * factor));
 
     ins.setOption({
       series: [
@@ -287,6 +292,16 @@ function zoomGraph(factor: number) {
     });
   } catch (e) {
     console.warn("图谱缩放失败:", e);
+  }
+}
+
+function toggleLabels() {
+  showLabels.value = !showLabels.value;
+  // 立即重绘当前可见图
+  try {
+    draw(visibleGraph.value);
+  } catch (e) {
+    console.warn("切换名称显示失败:", e);
   }
 }
 
@@ -679,7 +694,8 @@ function draw(dto: GraphDTO) {
           fontWeight: "normal",
         },
         data: dto.nodes.map((n) => {
-          const isShowLabel = n.type === "Organization" || n.type === "Author";
+          const isShowLabel =
+            showLabels.value && (n.type === "Organization" || n.type === "Author");
           const nodeData = {
             ...n,
             id: n.id,

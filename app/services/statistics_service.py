@@ -13,7 +13,7 @@ class StatisticsService:
     
     def query_statistics(self, query_params: Dict[str, Any]) -> Dict[str, Any]:
         cache_key = self._generate_cache_key(query_params)
-        """
+        
         if self.cache:
             try:
                 cached = self.cache.get(cache_key)
@@ -22,7 +22,7 @@ class StatisticsService:
                     return json.loads(cached)
             except Exception as e:
                 logger.warning(f"缓存读取失败: {e}")
-        """
+        
         try:
             data = self.dao.query_aggregated(query_params)
             

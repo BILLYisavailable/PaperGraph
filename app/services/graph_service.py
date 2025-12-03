@@ -12,7 +12,6 @@ class GraphService:
     
     def get_root(self, params: Dict[str, Any]) -> Dict[str, Any]:
         cache_key = f"graph:root:{json.dumps(params, sort_keys=True)}"
-        """
         if self.cache:
             try:
                 cached = self.cache.get(cache_key)
@@ -21,7 +20,6 @@ class GraphService:
                     return json.loads(cached)
             except Exception as e:
                 logger.warning(f"缓存读取失败: {e}")
-        """
         nodes, edges = self.dao.query_root(params)
         result = {"nodes": nodes, "edges": edges}
         

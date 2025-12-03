@@ -13,21 +13,6 @@ const routes: Array<RouteRecordRaw> = [
     component: HomePage,
   },
   {
-    path: "/user/login",
-    name: "userLogin",
-    component: UserLoginPage,
-  },
-  {
-    path: "/user/register",
-    name: "userRegister",
-    component: UserRegisterPage,
-  },
-  {
-    path: "/admin/userManage",
-    name: "adminUserManage",
-    component: UserManagePage,
-  },
-  {
     path: "/data-stats",
     name: "DataStats",
     component: DataStats,

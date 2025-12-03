@@ -74,12 +74,6 @@ const items = ref<MenuProps["items"]>([
     label: "数据统计",
     title: "数据统计",
   },
-  {
-    key: "/admin/userManage",
-    icon: () => h(CrownOutlined),
-    label: "用户管理",
-    title: "用户管理",
-  },
 ]);
 </script>
 
